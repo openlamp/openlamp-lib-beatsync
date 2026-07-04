@@ -18,6 +18,13 @@ The overlay never talks to a device directly. It opens a virtual MIDI port
 persistent device connections, so MIDI-triggered changes are as instant as a key
 press — and stay in sync with the Stream Deck.
 
+## For musicians, not Stream Deck users
+
+Controlling lamps over MIDI is **not a Stream Deck feature** (the Stream Deck plugin
+drives the engine directly). This overlay targets the **MIDI musician community** —
+people who already own physical MIDI controllers and want to fire lamp colors from
+them, live on stage. See [ENCAPSULATION.md](ENCAPSULATION.md).
+
 ## Why MIDI
 
 MIDI is the cheapest, most ubiquitous **physical control layer**: €20-80 pads,

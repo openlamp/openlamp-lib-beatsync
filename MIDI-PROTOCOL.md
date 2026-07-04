@@ -145,6 +145,16 @@ and issues `tempo:<bpm>` so the lamps pulse in time. It targets the group of
 }
 ```
 
+## Value resolution (7-bit MIDI)
+
+MIDI carries **7-bit** values (0-127). The engine and OpenLamp State use **8-bit**
+(0-255) for brightness, color channels and effect params — the same range as WLED's
+JSON API. So the bridge **scales MIDI up** (roughly ×2): a fader at 127 = 255 = full.
+
+This 7-bit resolution is plenty for stage cues (colors, brightness, on/off). It's the
+coarser end of the chain: MIDI 7-bit -> engine/WLED 8-bit. If finer control is ever
+needed, MIDI 2.0 (32-bit) or OSC would be the path — see the project notes.
+
 ## Design note
 
 The MIDI bridge is a **frontend**, not part of the plugin — it only speaks the
