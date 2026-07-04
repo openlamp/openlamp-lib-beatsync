@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
-"""LumiDeck MIDI bridge — pilote les lampes depuis Ableton / Bome / tout DAW.
+"""LumiDeck MIDI bridge — drive the lamps from Ableton / Bome / any DAW.
 
-C'est un FRONTAL de plus (comme le CLI et Stream Deck) : il ne parle pas Tuya,
-il ouvre un port MIDI virtuel "LumiDeck", traduit le MIDI entrant en commandes
-OpenLamp State et les POSTe a l'API locale du plugin (127.0.0.1:8377). Le moteur
-(qui detient les connexions persistantes) fait le reste — reponse immediate.
+It is one more FRONTEND (like the CLI and Stream Deck): it never speaks Tuya. It
+opens a virtual MIDI port "LumiDeck", translates incoming MIDI into OpenLamp State
+commands and POSTs them to the plugin's local API (127.0.0.1:8377). The engine
+(which holds the persistent connections) does the rest — instant response.
 
-Dans Ableton / Bome / Logic : le port "LumiDeck" apparait comme sortie MIDI.
-Route-y des notes / CC / program change (voir mapping.json).
+In Ableton / Bome / Logic the "LumiDeck" port shows up as a MIDI output. Route
+notes / CC / program change to it (see mapping.json).
 
-Mapping par defaut (editable dans mapping.json, canal 1 par defaut) :
-  - Notes 60-67 (C3..G3)  -> 8 couleurs (palette Kelly)
-  - Note 48 (C2)          -> OFF, note 50 -> ON, note 52 -> toggle
+Default mapping (editable in mapping.json; one channel per group):
+  - Notes 60-67 (C3..G3)  -> 8 colors (Kelly palette)
+  - Note 48 -> OFF, note 50 -> ON, note 52 -> toggle
   - Note 53 -> blackout, note 55 -> restore
-  - CC 1 (mod wheel)      -> intensite 0-100 %
-  - CC 2                  -> temperature blanc (chaud->froid)
-  - Program Change 0-N    -> scenes/snapshots nommes (liste "programs")
-  - MIDI clock (0xF8)     -> tempo: BPM auto (allume/eteint via "clock_tempo")
+  - Notes 56-59 -> music mode / animstop / flash / cycle
+  - CC 1 (mod wheel)      -> brightness 0-100 %
+  - CC 2                  -> white temperature (warm->cold)
+  - CC 3 / 4              -> continuous hue / saturation (advanced color)
+  - CC 5 / 6 / 7          -> WLED effect number / speed / intensity
+  - Program Change 0-N    -> named scenes / WLED presets / snapshots ("programs")
+  - MIDI clock (0xF8)     -> tempo: auto BPM (toggled by "clock_tempo")
 
-Lancement : python3 lumideck_midi.py   (Ctrl-C pour quitter)
-Autostart : voir com.benlab.lumideck-midi.plist (launchd).
+Run: python3 lumideck_midi.py   (Ctrl-C to quit)
+Autostart: see com.benlab.lumideck-midi.plist (launchd).
 """
 import json, os, sys, time, threading, colorsys, urllib.request, urllib.parse
 import rtmidi
@@ -30,32 +33,32 @@ API = "http://127.0.0.1:8377"
 
 DEFAULT = {
     "port_name": "LumiDeck",
-    # UN CANAL MIDI PAR GROUPE (Benoit 2026-07-04) : chaque canal route vers un
-    # groupe/lampe. "all" = toutes. Les groupes sont definis dans tuya-lamps.json
-    # ("groups": {"front": ["L1"], ...}) et developpes cote moteur.
+    # ONE MIDI CHANNEL PER GROUP: each channel routes to a group/lamp. "all" =
+    # every lamp. Groups are defined in the engine config tuya-lamps.json
+    # ("groups": {"front": ["L1"], ...}) and expanded engine-side.
     "channels": {
         "1": "all", "2": "front", "3": "back", "4": "L1", "5": "L2"
     },
-    # une note = une commande OLS (n'importe quelle string du protocole marche ici)
+    # a note = one OLS command (any protocol string works here)
     "notes": {
-        # 8 couleurs
+        # 8 colors
         "60": "jaune", "61": "violet", "62": "orange", "63": "bleuclair",
         "64": "rouge", "65": "vert", "66": "rose", "67": "bleu",
-        # alimentation / etats
+        # power / states
         "48": "off", "50": "on", "52": "toggle", "53": "blackout", "55": "restore",
-        # modes & animations (Tuya + moteur)
-        "56": "mode:music",                        # Tuya : mode musique
-        "57": "animstop",                          # stoppe cycle/flash/tempo
-        "58": "flash:blanc@300",                   # flash blanc court
-        "59": "cycle:jaune,violet,rouge,vert@800", # cycle de couleurs
+        # modes & animations (Tuya + engine)
+        "56": "mode:music",                        # Tuya music mode
+        "57": "animstop",                          # stop cycle/flash/tempo
+        "58": "flash:blanc@300",                   # short white flash
+        "59": "cycle:jaune,violet,rouge,vert@800", # color cycle
     },
-    # CC -> reglage continu (faders/knobs).
-    #   hue/sat = couleur avancee (spectre + saturation) · bri · cct (blanc)
-    #   fx/sx/ix = effet WLED : numero d'effet, vitesse, intensite
+    # CC -> continuous control (faders/knobs).
+    #   hue/sat = advanced color (full spectrum + saturation) · bri · cct (white)
+    #   fx/sx/ix = WLED effect: effect number, speed, intensity
     "cc": {"1": "bri", "2": "cct", "3": "hue", "4": "sat",
            "5": "fx", "6": "sx", "7": "ix"},
-    "programs": [],                   # ["night","read",...] -> scene:<nom>
-    "clock_tempo": True               # MIDI clock -> commande tempo:<bpm>
+    "programs": [],                   # ["night","read",...] -> scene:<name>
+    "clock_tempo": True               # MIDI clock -> tempo:<bpm> command
 }
 
 def load_cfg():
@@ -71,7 +74,7 @@ def send(cmd, lamps):
     try:
         urllib.request.urlopen(API + "/cmd?c=" + q, timeout=3).read()
     except Exception as e:
-        print("  ! API injoignable (plugin lance ?) :", e)
+        print("  ! API unreachable (is the plugin running?):", e)
 
 class Bridge:
     def __init__(self, cfg):
@@ -79,18 +82,18 @@ class Bridge:
         self.clock_ticks = 0
         self.clock_t0 = None
         self.last_bpm = None
-        self.hue = {}                 # teinte courante par canal (mode couleur avance)
-        self.sat = {}                 # saturation courante par canal
-        self.fx = {}                  # effet WLED courant par canal : {fx,sx,ix}
+        self.hue = {}                 # current hue per channel (advanced color)
+        self.sat = {}                 # current saturation per channel
+        self.fx = {}                  # current WLED effect per channel: {fx,sx,ix}
 
     def _target(self, chan):
-        # canal MIDI -> cible (nom de groupe/lampe, ou "all"). Retourne la liste
-        # a passer a l'API ([] = toutes). Compat : ancien "channel"/"lamps".
+        # MIDI channel -> target (group/lamp name, or "all"). Returns the list to
+        # pass to the API ([] = all). Back-compat with the old "channel"/"lamps".
         chans = self.cfg.get("channels")
         if chans is not None:
             tgt = chans.get(str(chan))
             if tgt is None:
-                return None            # canal non mappe -> ignore
+                return None            # unmapped channel -> ignore
             return [] if tgt in ("all", "*", "") else [tgt]
         want = self.cfg.get("channel", 1)
         if want and chan != want:
@@ -99,7 +102,7 @@ class Bridge:
 
     def on_note(self, note, on, target):
         m = self.cfg["notes"].get(str(note))
-        if not m or not on:           # on n'agit que sur note-on (velocite > 0)
+        if not m or not on:           # act on note-on only (velocity > 0)
             return
         print("  ch->%s  note %d -> %s" % (target or "all", note, m))
         send(m, target)
@@ -111,9 +114,9 @@ class Bridge:
         elif kind == "cct":
             send('{"cct":%d}' % round(val / 127 * 255), target)
         elif kind in ("hue", "sat"):
-            # COULEUR AVANCEE AU FADER : teinte et/ou saturation continues -> RGB.
-            # Le fader "hue" balaie tout le spectre (0=rouge...127=rouge), "sat"
-            # va du blanc a la couleur pure. Etat par canal pour combiner les deux.
+            # ADVANCED COLOR ON A FADER: continuous hue and/or saturation -> RGB.
+            # The "hue" fader sweeps the whole spectrum (0=red...127=red), "sat"
+            # goes from white to pure color. State per channel to combine both.
             if kind == "hue":
                 self.hue[chan] = val / 127.0
             else:
@@ -123,17 +126,17 @@ class Bridge:
             r, g, b = colorsys.hsv_to_rgb(h, s, 1.0)
             send('{"col":[%d,%d,%d]}' % (round(r*255), round(g*255), round(b*255)), target)
         elif kind in ("fx", "sx", "ix"):
-            # EFFET WLED au fader (ignore par les lampes Tuya) : numero d'effet,
-            # vitesse, intensite — combines par canal.
+            # WLED effect on a fader (Tuya lamps skip it): effect number, speed,
+            # intensity — combined per channel.
             f = self.fx.setdefault(chan, {"fx": 0, "sx": 128, "ix": 128})
             f[kind] = round(val / 127 * (200 if kind == "fx" else 255))
             send('{"fx":%d,"sx":%d,"ix":%d}' % (f["fx"], f["sx"], f["ix"]), target)
 
     def on_program(self, prog, target):
-        # Program Change -> rappel d'une ambiance memorisee. Selon l'entree :
-        #   "night"       -> scene:night   (scene nommee Tuya, capturee)
-        #   "ps:5" ou "5" -> preset:5      (preset WLED)
-        #   "snap:song3"  -> snap:song3    (snapshot moteur, toutes lampes)
+        # Program Change -> recall a stored look. Depending on the entry:
+        #   "night"       -> scene:night   (a captured Tuya scene)
+        #   "ps:5" or "5" -> preset:5      (a WLED preset)
+        #   "snap:song3"  -> snap:song3    (an engine snapshot, all lamps)
         progs = self.cfg.get("programs") or []
         if not (0 <= prog < len(progs)):
             return
@@ -150,9 +153,9 @@ class Bridge:
         send(cmd, target)
 
     def on_clock(self):
-        # 24 ticks MIDI = 1 noire -> BPM. On envoie une commande tempo quand le
-        # BPM change de facon notable (evite de spammer le moteur). Cible = groupe
-        # du canal "clock_channel" de la config (defaut : toutes).
+        # 24 MIDI ticks = 1 beat -> BPM. Emit a tempo command only when the BPM
+        # changes noticeably (avoids spamming the engine). Target = the group of
+        # the config "clock_channel" (default: all).
         if not self.cfg.get("clock_tempo"):
             return
         now = time.monotonic()
@@ -169,13 +172,13 @@ class Bridge:
 
     def dispatch(self, msg):
         status = msg[0]
-        if status == 0xF8:            # clock : pas de canal -> tempo global (toutes)
+        if status == 0xF8:            # clock: no channel -> global tempo (all)
             self.on_clock(); return
         typ, chan = status & 0xF0, (status & 0x0F) + 1
         target = self._target(chan)
-        if target is None:            # canal non mappe
+        if target is None:            # unmapped channel
             return
-        if typ == 0x90:               # note on (velocite 0 = note off)
+        if typ == 0x90:               # note on (velocity 0 = note off)
             self.on_note(msg[1], msg[2] > 0, target)
         elif typ == 0x80:             # note off
             self.on_note(msg[1], False, target)
