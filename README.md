@@ -58,6 +58,29 @@ plugin from the core repo) must be running.
 Built by **BenLab** with the help of **Claude (Anthropic)**. Part of the LumiDeck
 project. Not affiliated with Tuya, Elgato, the WLED project, or any MIDI vendor.
 
+## Works with any class-compliant MIDI controller
+
+Any controller your Mac sees as a MIDI device works out of the box — route it to
+the `LumiDeck` virtual port (directly, or through your DAW). Typical stage picks:
+
+- **Foot controllers** (hands stay on your instrument): Hotone **Ampero Control**
+  (4 footswitches, ~80 EUR), Morningstar MC6/MC8, Behringer FCB1010 (10 switches
+  + 2 expression pedals, the classic). Map switches to blackout / restore /
+  scene recalls per song section.
+- **Pads**: Novation Launchpad Mini, Akai APC mini (~80-100 EUR) — one pad per
+  color per group; the 8x8 grid maps naturally to 8 colors x channels.
+- **Faders/knobs**: Korg nanoKONTROL2 (~60 EUR) — hue / saturation / brightness
+  on three faders (CC 3/4/1) = paint any color live with one hand.
+- **Keys**: any MIDI keyboard — notes 60-67 are the color palette; velocity is
+  ignored, so nothing fires by accident while playing softly... on another channel.
+- **Multi-FX pedals that send MIDI**: Hotone Ampero II Stomp, Line 6 HX Stomp —
+  a patch change on your guitar board can also switch the stage color.
+- **From the DAW**: Ableton Live clips (one MIDI track per lamp-group channel),
+  or MIDI clock for tempo-synced pulses.
+
+No drivers, no config on the controller side: it just sends notes/CC — the
+mapping lives in `mapping.json` on the computer.
+
 ## Family & the one-host rule
 
 This overlay talks to the engine's local API (`/cmd` on 127.0.0.1:8377) served by
