@@ -145,15 +145,17 @@ and issues `tempo:<bpm>` so the lamps pulse in time. It targets the group of
 }
 ```
 
-## Value resolution (7-bit MIDI)
+## Value resolution (7-bit MIDI, full dynamics preserved)
 
-MIDI carries **7-bit** values (0-127). The engine and OpenLamp State use **8-bit**
-(0-255) for brightness, color channels and effect params — the same range as WLED's
-JSON API. So the bridge **scales MIDI up** (roughly ×2): a fader at 127 = 255 = full.
+MIDI carries **7-bit** values (0-127); the engine and OpenLamp State use **8-bit**
+(0-255), same as WLED's JSON API. The bridge maps with **exact endpoint scaling**
+`round(v x 255 / 127)` — so 0 -> 0 and 127 -> **255**: the full dynamic range is
+preserved (a naive x2 would top out at 254 and never reach true full).
 
-This 7-bit resolution is plenty for stage cues (colors, brightness, on/off). It's the
-coarser end of the chain: MIDI 7-bit -> engine/WLED 8-bit. If finer control is ever
-needed, MIDI 2.0 (32-bit) or OSC would be the path — see the project notes.
+The coarser 7-bit steps (~0.8 % each) sit below the eye's ~1 % discrimination
+threshold for brightness — imperceptible in practice. So 7-bit control loses
+nothing that matters on stage; what must never be lost is the dynamic range,
+and the endpoint-exact mapping guarantees it.
 
 ## Design note
 
