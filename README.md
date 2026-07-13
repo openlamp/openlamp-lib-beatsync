@@ -111,8 +111,8 @@ For TestPyPI first, duplicate the publisher on <https://test.pypi.org> and add a
 
 ## Credits
 
-Built by **BenLab** with the help of **Claude (Anthropic)**. Part of the LumiDeck
-project. Not affiliated with Tuya, Elgato, the WLED project, or any MIDI vendor.
+Built by **[@Beennnn](https://github.com/Beennnn)** with the help of **Claude (Anthropic)**. Part of the **[OpenLamp](https://github.com/openlamp)**
+family. Not affiliated with Tuya, Elgato, the WLED project, or any MIDI vendor.
 
 ## Works with any class-compliant MIDI controller
 

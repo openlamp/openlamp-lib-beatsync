@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "MIDI + Ableton Link frontends for OpenLamp/LumiDeck smart lamps — drive lamps from a MIDI controller/DAW and flash them on the beat."
 readme = "README.md"
 requires-python = ">=3.9"
-authors = [{ name = "BenLab (Benoît Besson)", email = "benoit.besson@gmail.com" }]
+authors = [{ name = "Benoît Besson (@Beennnn)", email = "benoit.besson@gmail.com" }]
 keywords = ["midi", "ableton-link", "wled", "smart-lamp", "lighting", "stream-deck", "beat-sync"]
 license = { file = "LICENSE" }
 classifiers = [
