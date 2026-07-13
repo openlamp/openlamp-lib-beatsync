@@ -201,7 +201,11 @@ class MidiClockSource:
         self.beats_per_bar = beats_per_bar
         self.on_tick = on_tick
         self._midiin = None
-        self._running = False
+        # Tick as soon as clock flows: many DAWs (Ableton) only emit clock while
+        # PLAYING and send Start once — if beatsync connects mid-playback it never
+        # sees that Start, so default to running and let Stop (0xFC) halt it. Start
+        # just re-zeroes the beat position (Benoit 2026-07-13, verified w/ Ableton).
+        self._running = True
         self._clock_count = 0          # clocks since transport start (mod 24 handled)
         self._tick_index = 0           # subdivisions elapsed since start
         self._times = []               # recent clock timestamps for bpm estimate
@@ -276,7 +280,7 @@ class MidiClockSource:
 
     def run(self):
         self._open()
-        print("  (waiting for transport Start — press Play in your DAW)")
+        print("  (ticking whenever MIDI clock flows — press Play in your DAW; Stop halts)")
         try:
             while not self._stop.wait(0.2):
                 pass
@@ -316,8 +320,7 @@ class LinkClockSource:
             sys.exit(2)
 
         async def loop():
-            loop_ = asyncio.get_running_loop()
-            link = Link(self.bpm, loop_)
+            link = Link(self.bpm)                          # aalink uses the running loop (loop arg deprecated)
             link.enabled = True
             print(f"→ Ableton Link: session joined @ {self.bpm} bpm "
                   f"(sub={self.sub}/quarter). Start any Link app to lock phase.")
