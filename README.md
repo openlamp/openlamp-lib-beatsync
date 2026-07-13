@@ -42,11 +42,21 @@ The lamp bridge is one instance of a general pattern: **MIDI → any local backe
 (Home Assistant, DMX/Art-Net, OSC, MQTT, Shelly…), so one cheap controller drives
 your whole show and home. See **[ENCAPSULATION.md](ENCAPSULATION.md)**.
 
-## Run
+## Install & run
 
 ```bash
-pip install python-rtmidi        # only dependency
-python3 lumideck_midi.py         # opens the virtual "LumiDeck" MIDI port
+pip install openlamp-midi          # pulls python-rtmidi; gives two commands:
+pip install "openlamp-midi[link]"  # + Ableton Link support for beatsync (native build)
+
+lumideck-midi                      # opens the virtual "LumiDeck" MIDI port
+beatsync --source midi --port Ableton --action flash --colors rouge
+```
+
+Or run the scripts straight from a checkout without installing:
+
+```bash
+pip install python-rtmidi
+python3 lumideck_midi.py
 ```
 
 Route your DAW/controller output to `LumiDeck`. Autostart via
@@ -74,6 +84,30 @@ python3 beatsync.py --source link --bpm 120 --action pulse --accent
 Subdivisions (`--sub 1|2|4`), per-beat action (`flash` / `cycle` / `pulse`),
 accent on beat 1, lamp/group targeting. Ctrl-C restores the lamps. Full options
 in the file's header docstring.
+
+## Publishing to PyPI (maintainer)
+
+Releases are published to PyPI by **Trusted Publishing (OIDC)** — no API token is
+stored in the repo. `.github/workflows/publish.yml` builds the sdist + wheel and
+publishes on each GitHub **Release**.
+
+One-time setup (yours — I don't touch PyPI credentials):
+
+1. **Create the PyPI project via a Pending Publisher** (works before the first
+   upload). On <https://pypi.org> → *Your account* → *Publishing* → *Add a pending
+   publisher*, fill in:
+   - PyPI Project Name: `openlamp-midi`
+   - Owner: `openlamp` · Repository: `midi`
+   - Workflow name: `publish.yml`
+   - Environment name: `pypi`
+2. **Add the `pypi` environment** on GitHub: repo → *Settings* → *Environments* →
+   *New environment* → `pypi` (optionally require a reviewer for extra safety).
+3. **Cut a release**: bump `version` in `pyproject.toml`, commit, then create a
+   GitHub Release (tag e.g. `v0.1.0`). The workflow builds and publishes — check
+   the *Actions* tab. Done: `pip install openlamp-midi` works worldwide.
+
+For TestPyPI first, duplicate the publisher on <https://test.pypi.org> and add a
+`repository-url: https://test.pypi.org/legacy/` to the publish step.
 
 ## Credits
 

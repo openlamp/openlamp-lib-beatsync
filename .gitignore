@@ -1,3 +1,8 @@
 mapping.json
 __pycache__/
 *.pyc
+
+# build artifacts
+build/
+dist/
+*.egg-info/

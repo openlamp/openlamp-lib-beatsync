@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openlamp-midi"
+version = "0.1.0"
+description = "MIDI + Ableton Link frontends for OpenLamp/LumiDeck smart lamps — drive lamps from a MIDI controller/DAW and flash them on the beat."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "BenLab (Benoît Besson)", email = "benoit.besson@gmail.com" }]
+keywords = ["midi", "ableton-link", "wled", "smart-lamp", "lighting", "stream-deck", "beat-sync"]
+license = { file = "LICENSE" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: European Union Public Licence 1.2 (EUPL 1.2)",
+    "Operating System :: OS Independent",
+    "Environment :: MacOS X",
+    "Topic :: Multimedia :: Sound/Audio :: MIDI",
+    "Topic :: Home Automation",
+]
+# python-rtmidi is the only hard dep (MIDI I/O). Ableton Link (aalink) is an
+# optional native build — install it with the "link" extra only if you use it.
+dependencies = ["python-rtmidi>=1.5"]
+
+[project.optional-dependencies]
+link = ["aalink>=0.1"]
+
+[project.urls]
+Homepage = "https://github.com/openlamp/midi"
+Source = "https://github.com/openlamp/midi"
+Issues = "https://github.com/openlamp/midi/issues"
+"OpenLamp umbrella" = "https://github.com/openlamp"
+
+# Two console commands, one per frontend module (both expose main()).
+[project.scripts]
+beatsync = "beatsync:main"
+lumideck-midi = "lumideck_midi:main"
+
+[tool.setuptools]
+# Flat single-file modules (no package dir) — ship exactly these two.
+py-modules = ["beatsync", "lumideck_midi"]
