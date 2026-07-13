@@ -59,7 +59,8 @@ DEFAULT_API = "http://127.0.0.1:8377"
 # ESP can crash/reboot) past ~4 COMMANDS/second. A blink is 2 commands (bright +
 # dark), so this is enforced per-command, not per-beat (Benoit 2026-07-13, after a
 # too-fast strobe knocked a lamp offline). Excess commands are dropped, never queued.
-MAX_CMDS_PER_SEC = 4.0
+MAX_CMDS_PER_SEC = 4.2   # tiny headroom so an evenly-spaced 120-bpm blink (≈4/s) isn't
+                         # clipped by jitter, still well under the ~5-6/s that crashes the ESP
 MAX_TICKS_PER_SEC = 4.2
 # The engine's colour vocabulary (lamp.py COLORS). Used only to validate input.
 # name → RGB, so beat flashes POST a raw patch with tt:0 (INSTANT, no fade) instead
@@ -385,29 +386,25 @@ class LinkClockSource:
                   f"(sub={self.sub}/quarter). Start any Link app to lock phase.")
             step = 1.0 / self.sub
             getbeat = (lambda: link.beat()) if callable(getattr(link, "beat", None)) else (lambda: link.beat)
-            fired = -1
-            # Poll the shared timeline and fire each subdivision `anticip` ms BEFORE
-            # its boundary, so the light (delayed by the learned latency) lands on it.
+            # Lock to Link's phase clock with sync(), then each subdivision: ONE precise
+            # sleep to fire `anticip` ms before the next boundary (no polling jitter), then
+            # sync() again to re-lock to the exact boundary — so we never drift and the
+            # commands stay evenly spaced (which also stops the rate cap dropping them).
+            await link.sync(step)
+            i = int(round(getbeat() / step))            # current boundary index
             while not self._stop:
                 tempo = float(link.tempo)
-                beat_dur = 60.0 / max(1e-6, tempo)
-                b = float(getbeat())
-                idx = math.floor(b / step)              # last boundary already passed
-                nb = (idx + 1) * step                   # next boundary, in beats
-                dt = (nb - b) * beat_dur - self.anticip() / 1000.0
-                if dt > 0.003:
-                    await asyncio.sleep(min(dt, 0.03))
-                    continue
-                i = idx + 1
-                if i != fired:
-                    fired = i
-                    beat = (i // self.sub) % self.beats_per_bar
-                    is_down = (i % (self.sub * self.beats_per_bar) == 0)
-                    try:
-                        self.on_tick(beat + 1, is_down, tempo)
-                    except Exception as e:
-                        print("  ! tick handler error:", e, file=sys.stderr)
-                await asyncio.sleep(0.003)
+                sub_dur = (60.0 / max(1e-6, tempo)) * step
+                anticip_s = min(sub_dur * 0.9, self.anticip() / 1000.0)
+                i += 1                                  # the boundary we fire for
+                await asyncio.sleep(max(0.0, sub_dur - anticip_s))   # wake `anticip` before it
+                beat = (i // self.sub) % self.beats_per_bar
+                is_down = (i % (self.sub * self.beats_per_bar) == 0)
+                try:
+                    self.on_tick(beat + 1, is_down, tempo)
+                except Exception as e:
+                    print("  ! tick handler error:", e, file=sys.stderr)
+                await link.sync(step)                   # re-lock to boundary i (kills drift)
 
         try:
             import asyncio
