@@ -308,8 +308,15 @@ class MidiClockSource:
         if status == self.START:
             self._running = True
             self._clock_count = 0
-            self._next_boundary = 1        # anticipate from the first full boundary
+            self._next_boundary = 1        # Start = bar 1 → the accent locks to the DAW's downbeat
             self._times.clear()
+        elif status == self.SPP and len(msg) >= 3:
+            # Song Position (0xF2): 16th-note position from song start. Re-phase the bar
+            # so the accent aligns even when we join mid-song (if the DAW sends it — Ableton
+            # under plain clock does NOT, so a fresh Play/Start is the reliable path).
+            sub_index = int(round(((msg[2] << 7) | msg[1]) / 4.0 * self.sub))
+            self._clock_count = 0
+            self._next_boundary = sub_index + 1
         elif status == self.CONTINUE:
             self._running = True
         elif status == self.STOP:
