@@ -4,6 +4,8 @@ A **MIDI frontend** for the [LumiDeck](https://github.com/openlamp/lumideck) —
 drive your smart lamps (and, soon, anything else) from **Ableton, Bome, Logic, or
 any cheap physical MIDI controller** — and from the Stream Deck via its MIDI plugin.
 
+[![PyPI — openlamp-midi](https://img.shields.io/pypi/v/openlamp-midi?label=openlamp-midi&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/openlamp-midi/)
+
 This repo is the **top layer** of a stack. It references the others:
 
 | Layer | Repo | Role |
