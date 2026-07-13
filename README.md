@@ -115,6 +115,47 @@ the beat:
    WLED firmware — a blink is *two* commands (bright + dark), so this is enforced
    per command, not per beat. Excess is dropped, never queued.
 
+### Link vs MIDI clock — why Ableton Link is the better protocol
+
+Both sources drive the same flash, but they carry **different information**, and
+that difference decides whether the *downbeat* (the accent on beat 1) can land where
+it should. Prefer **Link** whenever the DAW offers it.
+
+| | **MIDI clock** (0xF8) | **Ableton Link** |
+|---|---|---|
+| What's on the wire | 24 anonymous ticks per quarter — *tempo only* | a continuously **shared timeline**: tempo **+ phase within the bar** |
+| Where's the bar / beat 1 | **nowhere** — a tick is just a tick | `link.phase` is exact; `0` **is** the bar's downbeat |
+| Tempo changes | followed tick-by-tick, but jittery (each tick is a separate event, subject to USB/driver scheduling) | smooth — you read a precise fractional beat position, not a tick count |
+| Joining mid-song | you see only ticks; you've missed the one Start that marked bar 1 | you're **instantly in phase** — the timeline is absolute and shared |
+| Multiple devices | each derives its own guess of "where beat 1 is" → they drift apart | all peers read the **same** phase → sample-accurate agreement |
+| Cabling | a MIDI/USB route (here: a virtual port) | none — peers find each other on the LAN |
+
+**The crux is the downbeat.** MIDI clock is a metronome with no score: it tells you
+*how fast* but never *where in the bar you are*. We confirmed this by sniffing
+Ableton during steady playback — it sends **only** clock (288 × 0xF8 over 6 s at
+120 BPM), **no** Start, Continue, Stop, or Song Position. So under plain clock the
+accent can only be *guessed*, and it drifts.
+
+MIDI does carry the bar in two *occasional* messages, and beatsync uses both when
+they appear:
+
+- **Start (0xFA)** — sent once when you press Play. beatsync treats it as *bar 1*, so
+  the accent locks — **but only if you press Play after arming beatsync**, from the
+  top of a bar. Join mid-song and there's no Start to catch.
+- **Song Position (0xF2)** — a 16th-note offset from song start; beatsync re-phases
+  the bar from it. Reliable in theory, but many DAWs (Ableton under plain clock
+  included) never send it.
+
+**Ableton Link needs none of that.** Because the phase is shared continuously, the
+downbeat is *always* known — `link.quantum` is set to the bar length and the accent
+counter is seeded from `link.phase`, so beat 1 falls on Ableton's bar 1 the instant
+you connect, with no Play/Stop dance and no drift between two lamps. That's why the
+demos use Link for anything where the *accent* matters, and keep MIDI clock for the
+simpler "just flash on every beat" case where the bar position is irrelevant.
+
+**Rule of thumb:** flash-on-every-beat → either source. Accent on the downbeat →
+**Link**, or a fresh **Play from bar 1** if you're stuck on MIDI clock.
+
 ## Publishing to PyPI (maintainer)
 
 Releases are published to PyPI by **Trusted Publishing (OIDC)** — no API token is
