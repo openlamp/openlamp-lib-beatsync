@@ -385,13 +385,19 @@ class LinkClockSource:
             print(f"→ Ableton Link: session joined @ {self.bpm} bpm "
                   f"(sub={self.sub}/quarter). Start any Link app to lock phase.")
             step = 1.0 / self.sub
-            getbeat = (lambda: link.beat()) if callable(getattr(link, "beat", None)) else (lambda: link.beat)
+            getphase = (lambda: link.phase()) if callable(getattr(link, "phase", None)) else (lambda: link.phase)
+            try:
+                link.quantum = float(self.beats_per_bar)   # bar length = our accent period
+            except Exception:
+                pass
             # Lock to Link's phase clock with sync(), then each subdivision: ONE precise
             # sleep to fire `anticip` ms before the next boundary (no polling jitter), then
             # sync() again to re-lock to the exact boundary — so we never drift and the
             # commands stay evenly spaced (which also stops the rate cap dropping them).
             await link.sync(step)
-            i = int(round(getbeat() / step))            # current boundary index
+            # Seed the counter from Link's PHASE (0 = bar downbeat, shared with Ableton) so
+            # the accent lands on the real "1", not an arbitrary start beat (Benoit 2026-07-13).
+            i = int(round(float(getphase()) / step))
             while not self._stop:
                 tempo = float(link.tempo)
                 sub_dur = (60.0 / max(1e-6, tempo)) * step
