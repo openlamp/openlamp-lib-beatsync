@@ -1,0 +1,4 @@
+# beatsync runtime deps — installed into the user's own Python, NOT bundled in
+# the pure-Python plugin binary (they are native extensions; see sync/README.md).
+python-rtmidi>=1.5    # MIDI clock source (import name: rtmidi)
+aalink>=0.1          # OPTIONAL — Ableton Link source; native build (Xcode CLT on macOS)

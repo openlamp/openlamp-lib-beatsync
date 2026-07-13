@@ -53,6 +53,28 @@ Route your DAW/controller output to `LumiDeck`. Autostart via
 `com.benlab.openlamp-midi.plist` (launchd). The LumiDeck engine (Stream Deck
 plugin from the core repo) must be running.
 
+## Tempo & beat sync — `beatsync.py`
+
+A second frontend in this repo, focused on **rhythm**: it follows an external
+**MIDI clock** (24 ppqn, Start/Stop/Continue) or an **Ableton Link** session and
+flashes / pulses / colour-cycles the lamps **on the beat** — locked to the music,
+no cable needed for Link. Same target as `lumideck_midi.py`: it POSTs to the
+engine's local API on `127.0.0.1:8377`, respecting the ~4 commands/second the WLED
+firmware can ack (it drops excess ticks rather than choke the lamps).
+
+```bash
+pip install python-rtmidi          # MIDI clock source
+pip install aalink                 # optional — Ableton Link source (native build)
+
+python3 beatsync.py --list-ports
+python3 beatsync.py --source midi --port Ableton --action flash --colors rouge
+python3 beatsync.py --source link --bpm 120 --action pulse --accent
+```
+
+Subdivisions (`--sub 1|2|4`), per-beat action (`flash` / `cycle` / `pulse`),
+accent on beat 1, lamp/group targeting. Ctrl-C restores the lamps. Full options
+in the file's header docstring.
+
 ## Credits
 
 Built by **BenLab** with the help of **Claude (Anthropic)**. Part of the LumiDeck
