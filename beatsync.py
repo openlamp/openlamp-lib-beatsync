@@ -44,7 +44,9 @@ Ctrl-C to stop (lamps are restored to their pre-sync state on exit).
 from __future__ import annotations
 
 import argparse
+import collections
 import json
+import math
 import signal
 import sys
 import threading
@@ -53,7 +55,11 @@ import urllib.request
 import urllib.parse
 
 DEFAULT_API = "http://127.0.0.1:8377"
-# Firmware ceiling — one lamp session drops acked commands past this rate.
+# Firmware ceiling — the WLED lamp drops acked commands (and, pushed harder, its
+# ESP can crash/reboot) past ~4 COMMANDS/second. A blink is 2 commands (bright +
+# dark), so this is enforced per-command, not per-beat (Benoit 2026-07-13, after a
+# too-fast strobe knocked a lamp offline). Excess commands are dropped, never queued.
+MAX_CMDS_PER_SEC = 4.0
 MAX_TICKS_PER_SEC = 4.2
 # The engine's colour vocabulary (lamp.py COLORS). Used only to validate input.
 # name → RGB, so beat flashes POST a raw patch with tt:0 (INSTANT, no fade) instead
@@ -82,18 +88,43 @@ class LampBus:
     On `--accent`, the first tick of each bar uses the accent colour / full bri.
     """
 
-    def __init__(self, api, lamps, action, colors, accent, flash_ms, verbose):
+    def __init__(self, api, lamps, action, colors, accent, flash_ms, lat_bias, verbose):
         self.api = api.rstrip("/")
         self.lamps = lamps                       # "" == all lamps
         self.action = action
         self.colors = colors or ["blanc"]
         self.accent = accent
         self.flash_ms = flash_ms
+        self.lat_bias = lat_bias                 # fixed lamp-reaction ms added to the learned RTT
         self.verbose = verbose
         self._cycle_i = 0
         self._last_send = 0.0
         self._saved = None                       # pre-sync snapshot for restore
         self._min_gap = 1.0 / MAX_TICKS_PER_SEC
+        self._rtt_ema = None                     # learned round-trip to the engine (ms)
+        self._sent = collections.deque()         # timestamps of recent commands (rate cap)
+
+    def _gate(self):
+        # HARD per-command rate cap: protects the lamp firmware. Returns False (drop)
+        # when the last second already holds MAX_CMDS_PER_SEC commands.
+        now = time.monotonic()
+        while self._sent and now - self._sent[0] > 1.0:
+            self._sent.popleft()
+        if len(self._sent) >= MAX_CMDS_PER_SEC:
+            return False
+        self._sent.append(now)
+        return True
+
+    # -- latency learning ------------------------------------------------------
+    def _note_rtt(self, ms):
+        # EMA of the observed POST round-trip — the *network+engine* share of the
+        # beat→light delay (the lamp-reaction share is the fixed lat_bias).
+        self._rtt_ema = ms if self._rtt_ema is None else 0.2 * ms + 0.8 * self._rtt_ema
+
+    def anticip_ms(self):
+        # how far BEFORE the beat to fire so the light lands ON it. Capped so a
+        # bad measurement can never push the flash more than 200 ms early.
+        return max(0.0, min(200.0, (self._rtt_ema or 0.0) + self.lat_bias))
 
     # -- low-level API helpers ------------------------------------------------
     def _lamps_q(self):
@@ -101,6 +132,8 @@ class LampBus:
 
     def _cmd(self, c):
         """GET /cmd?c=...  — the alias/engine command channel (flash, colours…)."""
+        if not self._gate():
+            return False
         url = f"{self.api}/cmd?c={urllib.parse.quote(c)}"
         if self.lamps:
             url += "&lamps=" + urllib.parse.quote(self.lamps)
@@ -114,14 +147,18 @@ class LampBus:
             return False
 
     def _patch(self, st):
-        """POST /json/state — a raw WLED-style patch (used by `pulse`)."""
+        """POST /json/state — a raw WLED-style patch (instant tt:0 strobe, pulse…)."""
+        if not self._gate():
+            return False
         url = f"{self.api}/json/state{self._lamps_q()}"
         data = json.dumps(st).encode()
         req = urllib.request.Request(url, data=data,
                                      headers={"Content-Type": "application/json"})
         try:
+            t0 = time.monotonic()
             with urllib.request.urlopen(req, timeout=1.5) as r:
                 r.read()
+            self._note_rtt((time.monotonic() - t0) * 1000.0)
             return True
         except Exception as e:
             if self.verbose:
@@ -208,19 +245,20 @@ class MidiClockSource:
     """
     CLOCK, START, CONTINUE, STOP, SPP = 0xF8, 0xFA, 0xFB, 0xFC, 0xF2
 
-    def __init__(self, port_hint, sub, beats_per_bar, on_tick):
+    def __init__(self, port_hint, sub, beats_per_bar, on_tick, anticip=None):
         self.port_hint = port_hint
         self.clocks_per_tick = max(1, round(24 / sub))
         self.beats_per_bar = beats_per_bar
         self.on_tick = on_tick
+        self.anticip = anticip or (lambda: 0.0)   # ms to fire BEFORE the beat (latency comp)
         self._midiin = None
         # Tick as soon as clock flows: many DAWs (Ableton) only emit clock while
         # PLAYING and send Start once — if beatsync connects mid-playback it never
         # sees that Start, so default to running and let Stop (0xFC) halt it. Start
         # just re-zeroes the beat position (Benoit 2026-07-13, verified w/ Ableton).
         self._running = True
-        self._clock_count = 0          # clocks since transport start (mod 24 handled)
-        self._tick_index = 0           # subdivisions elapsed since start
+        self._clock_count = 0          # clocks since transport start
+        self._next_boundary = 1        # index of the next subdivision to fire (anticipated)
         self._times = []               # recent clock timestamps for bpm estimate
         self._stop = threading.Event()
 
@@ -269,7 +307,7 @@ class MidiClockSource:
         if status == self.START:
             self._running = True
             self._clock_count = 0
-            self._tick_index = 0
+            self._next_boundary = 1        # anticipate from the first full boundary
             self._times.clear()
         elif status == self.CONTINUE:
             self._running = True
@@ -280,15 +318,22 @@ class MidiClockSource:
             self._times.append(t)
             if len(self._times) > 24:
                 self._times.pop(0)
-            if self._clock_count % self.clocks_per_tick == 0:
-                sub_per_beat = max(1, round(24 / self.clocks_per_tick))
-                beat = (self._tick_index // sub_per_beat) % self.beats_per_bar
-                is_down = (self._tick_index % (sub_per_beat * self.beats_per_bar) == 0)
+            cpt = self.clocks_per_tick
+            # anticipation expressed in CLOCKS: fire this many clocks before the
+            # boundary so the light lands on it (per_clock ≈ beat/24).
+            per_clock_ms = ((self._times[-1] - self._times[0]) / (len(self._times) - 1) * 1000.0
+                            if len(self._times) > 1 else 0.0)
+            ac = min(cpt - 1, round(self.anticip() / per_clock_ms)) if per_clock_ms > 0 else 0
+            if (self._clock_count + ac) >= self._next_boundary * cpt:
+                i = self._next_boundary
+                sub_per_beat = max(1, round(24 / cpt))
+                beat = (i // sub_per_beat) % self.beats_per_bar
+                is_down = (i % (sub_per_beat * self.beats_per_bar) == 0)
                 try:
                     self.on_tick(beat + 1, is_down, self._bpm())
                 except Exception as e:
                     print("  ! tick handler error:", e, file=sys.stderr)
-                self._tick_index += 1
+                self._next_boundary += 1
             self._clock_count += 1
 
     def run(self):
@@ -314,11 +359,12 @@ class LinkClockSource:
     Requires `pip install aalink` (native build). Fires the same on_tick as the
     MIDI source, awaiting each subdivision via Link's phase clock.
     """
-    def __init__(self, bpm, sub, beats_per_bar, on_tick):
+    def __init__(self, bpm, sub, beats_per_bar, on_tick, anticip=None):
         self.bpm = bpm
         self.sub = max(1, sub)
         self.beats_per_bar = beats_per_bar
         self.on_tick = on_tick
+        self.anticip = anticip or (lambda: 0.0)   # ms to fire before the beat
         self._stop = False
 
     def run(self):
@@ -338,17 +384,30 @@ class LinkClockSource:
             print(f"→ Ableton Link: session joined @ {self.bpm} bpm "
                   f"(sub={self.sub}/quarter). Start any Link app to lock phase.")
             step = 1.0 / self.sub
-            i = 0
+            getbeat = (lambda: link.beat()) if callable(getattr(link, "beat", None)) else (lambda: link.beat)
+            fired = -1
+            # Poll the shared timeline and fire each subdivision `anticip` ms BEFORE
+            # its boundary, so the light (delayed by the learned latency) lands on it.
             while not self._stop:
-                # wait for the next subdivision boundary on the shared timeline
-                await link.sync(step)
-                beat = (i // self.sub) % self.beats_per_bar
-                is_down = (i % (self.sub * self.beats_per_bar) == 0)
-                try:
-                    self.on_tick(beat + 1, is_down, float(link.tempo))
-                except Exception as e:
-                    print("  ! tick handler error:", e, file=sys.stderr)
-                i += 1
+                tempo = float(link.tempo)
+                beat_dur = 60.0 / max(1e-6, tempo)
+                b = float(getbeat())
+                idx = math.floor(b / step)              # last boundary already passed
+                nb = (idx + 1) * step                   # next boundary, in beats
+                dt = (nb - b) * beat_dur - self.anticip() / 1000.0
+                if dt > 0.003:
+                    await asyncio.sleep(min(dt, 0.03))
+                    continue
+                i = idx + 1
+                if i != fired:
+                    fired = i
+                    beat = (i // self.sub) % self.beats_per_bar
+                    is_down = (i % (self.sub * self.beats_per_bar) == 0)
+                    try:
+                        self.on_tick(beat + 1, is_down, tempo)
+                    except Exception as e:
+                        print("  ! tick handler error:", e, file=sys.stderr)
+                await asyncio.sleep(0.003)
 
         try:
             import asyncio
@@ -387,6 +446,10 @@ def build_parser():
                         "cycle rotates through all (default: rouge)")
     p.add_argument("--accent", action="store_true",
                    help="emphasise beat 1 of each bar")
+    p.add_argument("--latency-bias", type=float, default=45.0,
+                   help="fixed lamp-reaction ms added to the learned network RTT for "
+                        "beat anticipation (default 45 — the WLED hardware floor; raise "
+                        "if flashes still feel late, lower if early)")
     p.add_argument("--flash-ms", type=int, default=120,
                    help="flash/pulse duration in ms (default: 120)")
     p.add_argument("--lamps", default="",
@@ -432,14 +495,14 @@ def main(argv=None):
               f"Known: {', '.join(sorted(KNOWN_COLORS))}", file=sys.stderr)
 
     bus = LampBus(args.api, args.lamps, args.action, colors, args.accent,
-                  args.flash_ms, args.verbose)
+                  args.flash_ms, args.latency_bias, args.verbose)
     if not bus.arm():
         return 1
 
     if args.source == "midi":
-        src = MidiClockSource(args.port, args.sub, args.beats_per_bar, bus.tick)
+        src = MidiClockSource(args.port, args.sub, args.beats_per_bar, bus.tick, bus.anticip_ms)
     else:
-        src = LinkClockSource(args.bpm, args.sub, args.beats_per_bar, bus.tick)
+        src = LinkClockSource(args.bpm, args.sub, args.beats_per_bar, bus.tick, bus.anticip_ms)
 
     def _sigint(*_):
         print("\n↓ stopping…")

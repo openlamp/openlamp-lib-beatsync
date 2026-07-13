@@ -85,6 +85,34 @@ Subdivisions (`--sub 1|2|4`), per-beat action (`flash` / `cycle` / `pulse`),
 accent on beat 1, lamp/group targeting. Ctrl-C restores the lamps. Full options
 in the file's header docstring.
 
+### Landing the flash *on* the beat — latency learning + anticipation
+
+There is always a delay between "beatsync decides to flash" and "the lamp
+physically changes": the HTTP round-trip to the engine, plus the WLED hardware's
+reaction time (~45 ms). Left uncompensated the flash lands *after* the beat.
+beatsync learns that delay and fires **early** so the light change coincides with
+the beat:
+
+1. **Learn the network delay.** Every command POST to the engine
+   (`127.0.0.1:8377`) is timed and folded into an exponential moving average
+   `rtt = 0.2·sample + 0.8·rtt`. This is the *network + engine* share of the delay
+   (small on a local machine, larger over Wi-Fi or a loaded engine — so it's worth
+   measuring, not hard-coding).
+2. **Add the hardware floor.** A fixed lamp-reaction constant
+   (`--latency-bias`, default **45 ms** — the measured WLED floor) is added:
+   `L = rtt + bias`. Tune the bias by eye: raise it if flashes still feel late,
+   lower it if they feel early.
+3. **Fire `L` ms before each beat.**
+   - **MIDI clock:** `L` is converted to whole MIDI clocks (24 per quarter, so
+     `clocks = round(L / clock_period)`), and the tick fires that many clocks
+     *before* the beat boundary.
+   - **Ableton Link:** the shared timeline is polled; the tick fires the instant
+     the next subdivision is `L` ms away (`(next_beat − now)·beat_duration ≤ L`).
+4. **Guard rails.** `L` is capped at 200 ms (a bad measurement can never throw the
+   flash wildly early), and a hard **≤ 4 commands/second** limiter protects the
+   WLED firmware — a blink is *two* commands (bright + dark), so this is enforced
+   per command, not per beat. Excess is dropped, never queued.
+
 ## Publishing to PyPI (maintainer)
 
 Releases are published to PyPI by **Trusted Publishing (OIDC)** — no API token is
