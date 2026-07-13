@@ -163,3 +163,24 @@ The MIDI bridge is a **frontend**, not part of the plugin — it only speaks the
 public local API (`GET /cmd?c=…&lamps=…`). It never talks to a lamp directly; the
 engine owns the persistent connections, so MIDI-triggered changes are as instant
 as key presses, and everything (Stream Deck, CLI, MIDI) stays in sync.
+
+## Beyond a DAW “recording lamp”
+
+Studio recording / on-air lamps such as the [Punchlight USB RGB recording lamp](https://www.thomann.fr/punchlight_recording_lamp_usb_rgb.htm)
+turn a single fixture red while your DAW is recording — one lamp, a handful of
+states, driven by a companion app. **openlamp-midi does the same job and a great
+deal more**, from the same DAW, over plain MIDI:
+
+- **Any number of WLED lamps**, not one USB fixture — one per channel, in named
+  groups, or all at once.
+- **Full colour, white/CCT, brightness, WLED effects, palettes, scenes and
+  snapshots** — not just red/green/off. A note, CC or Program Change selects any of them.
+- **Tempo-reactive**: flash / pulse / colour-cycle **on the beat** from MIDI clock
+  or Ableton Link (see [`beatsync.py`](beatsync.py)) — a fixed recording lamp can't.
+- **Reproduces the recording-lamp cue trivially**: map a Program Change (or note)
+  that your DAW fires on record/play/stop to a scene — red on record, green on
+  play, off on stop — while the *same* rig still does full show lighting.
+- **100 % local** — no cloud, no vendor app: it's just MIDI → the local API.
+
+In other words, the "on-air lamp" is just one preset of a full, richer
+stage-lighting bus.
