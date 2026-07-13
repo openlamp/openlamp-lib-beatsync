@@ -31,6 +31,32 @@ exceed ~4 ticks/s, so the lamps never choke mid-set. That is also why the
 default action is `flash:` (one API call that the engine expands + auto-reverts
 itself) rather than a two-call bri pulse.
 
+Landing the accent on the downbeat (`--accent`)
+-----------------------------------------------
+`--accent` flashes beat 1 of the bar in a distinct colour. Whether that beat 1
+is the *real* downbeat depends entirely on what the clock source carries:
+
+  Ableton Link  — the source shares the bar's PHASE continuously. We set
+                  link.quantum = beats-per-bar and seed the beat counter from
+                  link.phase, so the accent falls on Ableton's bar 1 the instant
+                  we connect — exact, no drift, even across two lamps. This is the
+                  reliable path for the downbeat.
+  MIDI clock    — carries TEMPO ONLY; a 0xF8 tick says nothing about where the bar
+                  is (confirmed: Ableton emits only clock while playing). The bar
+                  is recovered from two occasional messages: Start (0xFA), treated
+                  as bar 1 — reliable if you press Play *after* arming beatsync;
+                  and Song Position (0xF2), which re-phases the bar when the DAW
+                  sends it. Under plain clock with neither, the accent is a guess.
+
+Landing the flash *on* the beat (latency anticipation)
+------------------------------------------------------
+There is a delay between "decide to flash" and "the lamp physically changes"
+(HTTP round-trip + ~45 ms WLED reaction). beatsync learns it — an EMA of the POST
+round-trip plus a fixed hardware bias (`--latency-bias`, default 45 ms) — and fires
+that many milliseconds EARLY so the light change coincides with the beat. Capped at
+200 ms so a bad measurement can't throw the flash wildly early. Full write-up in
+the repo README.
+
 Usage
 -----
   python3 sync/beatsync.py --list-ports
