@@ -22,7 +22,7 @@ Default mapping (editable in mapping.json; one channel per group):
   - MIDI clock (0xF8)     -> tempo: auto BPM (toggled by "clock_tempo")
 
 Run: python3 lumideck_midi.py   (Ctrl-C to quit)
-Autostart: see com.benlab.lumideck-midi.plist (launchd).
+Autostart: see com.openlamp.lumideck-midi.plist (launchd).
 """
 import json, os, sys, time, threading, colorsys, urllib.request, urllib.parse
 import rtmidi

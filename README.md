@@ -62,7 +62,7 @@ python3 lumideck_midi.py
 ```
 
 Route your DAW/controller output to `LumiDeck`. Autostart via
-`com.benlab.openlamp-midi.plist` (launchd). The LumiDeck engine (Stream Deck
+`com.openlamp.lumideck-midi.plist` (launchd). The LumiDeck engine (Stream Deck
 plugin from the core repo) must be running.
 
 ## Tempo & beat sync — `beatsync.py`
