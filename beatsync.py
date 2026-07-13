@@ -56,10 +56,16 @@ DEFAULT_API = "http://127.0.0.1:8377"
 # Firmware ceiling — one lamp session drops acked commands past this rate.
 MAX_TICKS_PER_SEC = 4.2
 # The engine's colour vocabulary (lamp.py COLORS). Used only to validate input.
-KNOWN_COLORS = {
-    "jaune", "violet", "orange", "bleuclair", "rouge", "vert", "rose", "bleu",
-    "blanc", "cyan", "magenta", "turquoise",
+# name → RGB, so beat flashes POST a raw patch with tt:0 (INSTANT, no fade) instead
+# of the engine's flash: alias — a lamp configured with a transition (e.g. 400 ms)
+# would otherwise fade each flash, making it soft and land off-beat (Benoit 2026-07-13).
+COLORS_RGB = {
+    "jaune": (255, 210, 0), "violet": (150, 70, 170), "orange": (255, 125, 0),
+    "bleuclair": (130, 195, 255), "rouge": (230, 0, 40), "vert": (0, 200, 80),
+    "rose": (255, 130, 170), "bleu": (0, 100, 200), "blanc": (255, 255, 255),
+    "cyan": (0, 200, 200), "magenta": (200, 0, 200), "turquoise": (0, 200, 160),
 }
+KNOWN_COLORS = COLORS_RGB   # `in` checks still work; validation unchanged
 
 
 # --------------------------------------------------------------------------- #
@@ -166,21 +172,28 @@ class LampBus:
 
         if self.action == "off":
             return
-        if self.action == "flash":
-            col = self.colors[0]
-            if self.accent and is_downbeat and len(self.colors) > 1:
-                col = self.colors[1]
-            self._cmd(f"flash:{col}@{self.flash_ms}")
-        elif self.action == "cycle":
-            col = self.colors[self._cycle_i % len(self.colors)]
-            self._cycle_i += 1
-            self._cmd(f"flash:{col}@{self.flash_ms}")
+        if self.action in ("flash", "cycle"):
+            if self.action == "cycle":
+                col = self.colors[self._cycle_i % len(self.colors)]
+                self._cycle_i += 1
+            else:
+                col = self.colors[0]
+                if self.accent and is_downbeat and len(self.colors) > 1:
+                    col = self.colors[1]
+            self._strobe(col)
         elif self.action == "pulse":
             hi = 255 if (not self.accent or is_downbeat) else 180
-            self._patch({"bri": hi})
-            # schedule the fall without blocking the clock thread
+            self._patch({"bri": hi, "tt": 0})
             threading.Timer(self.flash_ms / 1000.0,
-                            lambda: self._patch({"bri": 40})).start()
+                            lambda: self._patch({"bri": 40, "tt": 0})).start()
+
+    def _strobe(self, colname):
+        # BRUTAL beat hit: instant full-bright colour (tt:0 = no fade, snaps ON the
+        # beat), then instant drop to dark so each beat is a sharp punch, not a fade.
+        rgb = list(COLORS_RGB.get(colname, (255, 255, 255)))
+        self._patch({"on": True, "col": rgb, "bri": 255, "tt": 0})
+        threading.Timer(self.flash_ms / 1000.0,
+                        lambda: self._patch({"bri": 0, "tt": 0})).start()   # dark between hits
 
 
 # --------------------------------------------------------------------------- #
