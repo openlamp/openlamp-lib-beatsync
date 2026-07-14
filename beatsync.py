@@ -251,22 +251,28 @@ class LampBus:
             if self.action == "cycle":
                 col = self.colors[self._cycle_i % len(self.colors)]
                 self._cycle_i += 1
+                hi = 255
             else:
                 col = self.colors[0]
+                hi = 255
                 if self.accent and is_downbeat and len(self.colors) > 1:
-                    col = self.colors[1]
-            self._strobe(col)
+                    col = self.colors[1]                    # colour accent: 2nd colour on the downbeat
+                elif self.accent and len(self.colors) == 1 and not is_downbeat:
+                    hi = 120                                # linked accent: one colour, off-beats softer so
+                                                            # the downbeat punches brighter (same hue)
+            self._strobe(col, hi)
         elif self.action == "pulse":
             hi = 255 if (not self.accent or is_downbeat) else 180
             self._patch({"bri": hi, "tt": 0})
             threading.Timer(self.flash_ms / 1000.0,
                             lambda: self._patch({"bri": 40, "tt": 0})).start()
 
-    def _strobe(self, colname):
+    def _strobe(self, colname, hi=255):
         # BRUTAL beat hit: instant full-bright colour (tt:0 = no fade, snaps ON the
         # beat), then instant drop to dark so each beat is a sharp punch, not a fade.
+        # hi < 255 = a softer hit (used for the off-beats of a single-colour accent).
         rgb = list(COLORS_RGB.get(colname, (255, 255, 255)))
-        self._patch({"on": True, "col": rgb, "bri": 255, "tt": 0})
+        self._patch({"on": True, "col": rgb, "bri": hi, "tt": 0})
         threading.Timer(self.flash_ms / 1000.0,
                         lambda: self._patch({"bri": 0, "tt": 0})).start()   # dark between hits
 
