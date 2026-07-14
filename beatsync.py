@@ -415,9 +415,16 @@ class LinkClockSource:
         self.anticip = anticip or (lambda: 0.0)   # ms to fire before the beat
         self._stop = False
         self._cur_bpm = bpm                       # updated from Link each tick (for MIDI-clock-out)
+        self._pending_tempo = None                # a control message asked to set the Link tempo
 
     def current_bpm(self):
         return self._cur_bpm
+
+    def set_tempo(self, bpm):
+        # Control channel (e.g. the Stream Deck intensity dial): write the WHOLE Link
+        # session tempo — Ableton + every Link app + the lamps follow. Applied by the
+        # run loop (aalink's tempo setter must run inside its asyncio loop).
+        self._pending_tempo = max(30.0, min(300.0, float(bpm)))
 
     def run(self):
         try:
@@ -450,6 +457,12 @@ class LinkClockSource:
             # the accent lands on the real "1", not an arbitrary start beat (Benoit 2026-07-13).
             i = int(round(float(getphase()) / step))
             while not self._stop:
+                if self._pending_tempo is not None:            # control channel set a new tempo
+                    try:
+                        link.tempo = self._pending_tempo       # propagates to Ableton + all Link peers
+                    except Exception as e:
+                        print("  ! set link tempo:", e, file=sys.stderr)
+                    self._pending_tempo = None
                 tempo = float(link.tempo); self._cur_bpm = tempo
                 sub_dur = (60.0 / max(1e-6, tempo)) * step
                 anticip_s = min(sub_dur * 0.9, self.anticip() / 1000.0)
@@ -540,6 +553,15 @@ class TapTempoSource:
         if (msg[0] & 0xF0) == 0x90 and msg[2] > 0:          # note-on, velocity > 0
             if self.tap_note is None or msg[1] == self.tap_note:
                 self._tap()
+
+    def set_tempo(self, bpm):
+        # Control channel (e.g. the Stream Deck intensity dial): set the tempo directly,
+        # no tap needed. Re-seeds the downbeat so it flashes right away. In taplink mode
+        # the run loop then writes this to the Link session (Ableton follows).
+        with self._lock:
+            self.bpm = max(30.0, min(300.0, float(bpm)))
+            self._armed = True
+        self._reset.set()
 
     def _tap(self):
         now = time.monotonic()
@@ -747,6 +769,10 @@ def build_parser():
     p.add_argument("--tap-udp-port", type=int, default=8378,
                    help="for --source tap: also accept taps as UDP datagrams on this local "
                         "port (a Stream Deck key can tap here); 0 disables. Default 8378.")
+    p.add_argument("--ctrl-udp-port", type=int, default=0,
+                   help="accept tempo-control datagrams on this local port: 'tempo <bpm>' "
+                        "or 'nudge <±delta>' sets the tempo live (the Stream Deck intensity "
+                        "dial drives it). link/tap/taplink only; 0 disables. Default 0.")
     p.add_argument("--midi-clock-out", nargs="?", const="", default=None, metavar="PORT",
                    help="ALSO emit MIDI clock (24 ppqn + Start/Stop) at beatsync's current "
                         "tempo, so external gear in 'external sync' follows the deck. Give a "
@@ -785,6 +811,40 @@ def build_parser():
     p.add_argument("-v", "--verbose", action="store_true",
                    help="print every tick (metronome view)")
     return p
+
+
+def _ctrl_listener(port, src):
+    """Live tempo control over UDP: a datagram 'tempo <bpm>' sets the tempo, 'nudge <±d>'
+    adjusts it relative to the current one. Lets the Stream Deck intensity dial drive the
+    sync tempo while beat sync is running (link/tap/taplink sources)."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind(("127.0.0.1", port))
+    except OSError as e:
+        print("  ! tempo control: cannot bind udp", port, ":", e, file=sys.stderr)
+        return
+    s.settimeout(0.4)
+    print(f"→ Tempo control: listening on udp 127.0.0.1:{port} ('tempo <bpm>' / 'nudge <±d>').")
+    while True:
+        try:
+            data, _ = s.recvfrom(64)
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        parts = data.decode("ascii", "ignore").strip().split()
+        if len(parts) < 2:
+            continue
+        try:
+            val = float(parts[1])
+        except ValueError:
+            continue
+        if parts[0] == "tempo":
+            src.set_tempo(val)
+        elif parts[0] == "nudge":
+            src.set_tempo(src.current_bpm() + val)
 
 
 def main(argv=None):
@@ -839,6 +899,10 @@ def main(argv=None):
     if args.midi_clock_out is not None:                     # emit MIDI clock at the source's tempo
         clockout = MidiClockOut(args.midi_clock_out, src.current_bpm)
         threading.Thread(target=clockout.run, daemon=True).start()
+
+    if args.ctrl_udp_port > 0 and hasattr(src, "set_tempo"):
+        threading.Thread(target=_ctrl_listener, args=(args.ctrl_udp_port, src),
+                         daemon=True).start()
 
     def _sigint(*_):
         print("\n↓ stopping…")
