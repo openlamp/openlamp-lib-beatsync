@@ -11,7 +11,7 @@ Ableton Link session and drives the lamps on the beat. Like every OpenLamp front
 never talks to a device directly — it POSTs OpenLamp State commands to the engine's
 local API on 127.0.0.1:8377 (the daemon owns the persistent connections). It stays a standalone helper on purpose: MIDI (python-rtmidi) and
 Ableton Link (aalink) are native C/C++ extensions, deliberately kept out of the
-pure-Python, zero-toolchain LumiDeck plugin binary.
+pure-Python, zero-toolchain OpenLamp plugin binary.
 
 Three clock sources, same lamp mapping
 --------------------------------------
@@ -32,7 +32,7 @@ Three clock sources, same lamp mapping
 
 The hardware cap that shapes everything
 ---------------------------------------
-Measured on the reference WLED bulbs (lumideck PROTOCOL.md, 2026-07-03): the firmware
+Measured on the reference WLED bulbs (PROTOCOL.md, 2026-07-03): the firmware
 drops the session beyond ~4 acknowledged commands/second. beatsync sends **one**
 API call per tick and refuses (with a warning) a subdivision×tempo that would
 exceed ~4 ticks/s, so the lamps never choke mid-set. That is also why the

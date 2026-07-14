@@ -22,7 +22,7 @@ colours, CC → brightness/effects, Program Change → presets — moved into th
 and now lives in [`openlamp/engine → midi.py`](https://github.com/openlamp/engine/blob/main/midi.py),
 the reference implementation of the
 **[wled-midi](https://github.com/openlamp/wled-midi)** convention. (Before v0.2.0 this
-package also shipped a `lumideck-midi` bridge; it was removed — use the engine's
+package also shipped a separate MIDI bridge; it was removed — use the engine's
 `midi.py`.)
 
 ## Family
@@ -31,7 +31,6 @@ package also shipped a `lumideck-midi` bridge; it was removed — use the engine
 |---|---|---|
 | convention | [wled-midi](https://github.com/openlamp/wled-midi) | the MIDI↔WLED spec |
 | engine | [engine](https://github.com/openlamp/engine) | drives the lamps + implements the convention (`midi.py`) |
-| Stream Deck | **LumiDeck** (commercial) | Elgato Stream Deck frontend |
 | Ableton | [live](https://github.com/openlamp/live) | Ableton Live frontend |
 | **tempo** | **this repo** | Ableton Link / MIDI-clock beat pulse |
 
