@@ -111,7 +111,7 @@ in the file's header docstring.
 
 There is always a delay between "beatsync decides to flash" and "the lamp
 physically changes": the HTTP round-trip to the engine, plus the WLED hardware's
-reaction time (~45 ms). Left uncompensated the flash lands *after* the beat.
+reaction time (~25-37 ms measured on Athom bulbs). Left uncompensated the flash lands *after* the beat.
 beatsync learns that delay and fires **early** so the light change coincides with
 the beat:
 
@@ -121,9 +121,9 @@ the beat:
    (small on a local machine, larger over Wi-Fi or a loaded engine — so it's worth
    measuring, not hard-coding).
 2. **Add the hardware floor.** A fixed lamp-reaction constant
-   (`--latency-bias`, default **45 ms** — the measured WLED floor) is added:
-   `L = rtt + bias`. Tune the bias by eye: raise it if flashes still feel late,
-   lower it if they feel early.
+   (`--latency-bias`, default **30 ms** — measured on Athom WLED bulbs at ~25-37 ms
+   avg with `lamp-bench`) is added: `L = rtt + bias`. Tune the bias by eye: raise it
+   if flashes still feel late, lower it if they feel early.
 3. **Fire `L` ms before each beat.**
    - **MIDI clock:** `L` is converted to whole MIDI clocks (24 per quarter, so
      `clocks = round(L / clock_period)`), and the tick fires that many clocks

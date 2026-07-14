@@ -60,11 +60,11 @@ is the *real* downbeat depends entirely on what the clock source carries:
 Landing the flash *on* the beat (latency anticipation)
 ------------------------------------------------------
 There is a delay between "decide to flash" and "the lamp physically changes"
-(HTTP round-trip + ~45 ms WLED reaction). beatsync learns it — an EMA of the POST
-round-trip plus a fixed hardware bias (`--latency-bias`, default 45 ms) — and fires
-that many milliseconds EARLY so the light change coincides with the beat. Capped at
-200 ms so a bad measurement can't throw the flash wildly early. Full write-up in
-the repo README.
+(HTTP round-trip + the lamp's reaction). beatsync learns it — an EMA of the POST
+round-trip plus a fixed hardware bias (`--latency-bias`, default 30 ms — measured on
+Athom WLED bulbs at ~25-37 ms avg via lamp-bench) — and fires that many milliseconds
+EARLY so the light change coincides with the beat. Capped at 200 ms so a bad
+measurement can't throw the flash wildly early. Full write-up in the repo README.
 
 Usage
 -----
@@ -772,10 +772,10 @@ def build_parser():
                         "cycle rotates through all (default: rouge)")
     p.add_argument("--accent", action="store_true",
                    help="emphasise beat 1 of each bar")
-    p.add_argument("--latency-bias", type=float, default=45.0,
+    p.add_argument("--latency-bias", type=float, default=30.0,
                    help="fixed lamp-reaction ms added to the learned network RTT for "
-                        "beat anticipation (default 45 — the WLED hardware floor; raise "
-                        "if flashes still feel late, lower if early)")
+                        "beat anticipation (default 30 — measured on Athom WLED bulbs, "
+                        "~25-37 ms avg via lamp-bench; raise if flashes feel late, lower if early)")
     p.add_argument("--flash-ms", type=int, default=120,
                    help="flash/pulse duration in ms (default: 120)")
     p.add_argument("--lamps", default="",
