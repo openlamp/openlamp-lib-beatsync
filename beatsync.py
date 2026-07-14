@@ -4,13 +4,12 @@ beatsync — drive OpenLamp/WLED lamps in time with an external musical clock.
 
 Where this sits in the OpenLamp stack
 -------------------------------------
-This is a MIDI/Link frontend of the openlamp-midi overlay — the same layer as
-lumideck_midi.py, which maps MIDI notes/CC to lamp commands. beatsync focuses on
-*tempo*: it follows an external MIDI clock or an Ableton Link session and drives
-the lamps on the beat. Like every OpenLamp frontend it never talks to a device
-directly — it POSTs OpenLamp State commands to the engine's local API on
-127.0.0.1:8377 (the LumiDeck plugin or the headless daemon owns the persistent
-connections). It stays a standalone helper on purpose: MIDI (python-rtmidi) and
+This is the tempo/beat frontend of the OpenLamp stack. The MIDI *control* path
+(notes/CC -> lamp commands) lives in the engine's midi.py (the wled-midi reference
+implementation); beatsync focuses on *tempo*: it follows an external MIDI clock or an
+Ableton Link session and drives the lamps on the beat. Like every OpenLamp frontend it
+never talks to a device directly — it POSTs OpenLamp State commands to the engine's
+local API on 127.0.0.1:8377 (the daemon owns the persistent connections). It stays a standalone helper on purpose: MIDI (python-rtmidi) and
 Ableton Link (aalink) are native C/C++ extensions, deliberately kept out of the
 pure-Python, zero-toolchain LumiDeck plugin binary.
 

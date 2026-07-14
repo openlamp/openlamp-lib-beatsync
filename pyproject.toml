@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openlamp-midi"
-version = "0.1.2"
-description = "MIDI + Ableton Link frontends for OpenLamp/LumiDeck smart lamps — drive lamps from a MIDI controller/DAW and flash them on the beat."
+version = "0.2.0"
+description = "Ableton Link / tempo-follow for OpenLamp smart lamps — flash them on the beat, phase-accurate. (MIDI *control* moved into the engine: github.com/openlamp/engine)."
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Benoît Besson (@Beennnn)", email = "benoit.besson@gmail.com" }]
@@ -32,11 +32,9 @@ Source = "https://github.com/openlamp/midi"
 Issues = "https://github.com/openlamp/midi/issues"
 "OpenLamp umbrella" = "https://github.com/openlamp"
 
-# Two console commands, one per frontend module (both expose main()).
 [project.scripts]
 beatsync = "beatsync:main"
-lumideck-midi = "lumideck_midi:main"
 
 [tool.setuptools]
-# Flat single-file modules (no package dir) — ship exactly these two.
-py-modules = ["beatsync", "lumideck_midi"]
+# Flat single-file module.
+py-modules = ["beatsync"]
