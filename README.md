@@ -31,7 +31,7 @@ package also shipped a `lumideck-midi` bridge; it was removed — use the engine
 |---|---|---|
 | convention | [wled-midi](https://github.com/openlamp/wled-midi) | the MIDI↔WLED spec |
 | engine | [engine](https://github.com/openlamp/engine) | drives the lamps + implements the convention (`midi.py`) |
-| Stream Deck | [lumideck](https://github.com/openlamp/lumideck) | Elgato Stream Deck frontend |
+| Stream Deck | **LumiDeck** (commercial) | Elgato Stream Deck frontend |
 | Ableton | [live](https://github.com/openlamp/live) | Ableton Live frontend |
 | **tempo** | **this repo** | Ableton Link / MIDI-clock beat pulse |
 
