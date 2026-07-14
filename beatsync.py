@@ -25,6 +25,11 @@ Three clock sources, same lamp mapping
                   the music and beatsync derives the tempo from your taps, then
                   free-runs the lamps on it. No DAW/clock needed (acoustic, jam).
                   Each tap re-seeds the downbeat. Optional --tap-note to pick the note.
+                  Taps also arrive as UDP datagrams (--tap-udp-port) so a Stream Deck
+                  key can be the tap pad with no MIDI at all.
+  --source taplink  tap to SET the Ableton Link tempo: your taps become the master
+                  tempo for the whole Link session — Ableton Live + every Link app +
+                  the lamps follow. Same tap inputs as --source tap. Needs aalink.
 
 The hardware cap that shapes everything
 ---------------------------------------
@@ -592,6 +597,75 @@ class TapTempoSource:
             except Exception: pass
 
 
+class TapLinkSource(TapTempoSource):
+    """Tap to SET the **Ableton Link** tempo — you become the tempo master, natively.
+
+    Same tap inputs as --source tap (a MIDI note and/or the deck key over UDP), but instead
+    of free-running an internal clock, each tap writes the tempo of the shared Link session:
+    Ableton Live and every other Link app adopt it, and the lamps follow Link's phase — so
+    the WHOLE rig (DAW + lamps) locks to your taps. The downbeat stays on Link's shared bar
+    (so the accent aligns with Ableton), the tempo is yours. Requires `pip install aalink`.
+    """
+    def run(self):
+        try:
+            import asyncio
+            from aalink import Link
+        except ImportError:
+            print("! Tap→Link needs aalink:\n    pip install aalink", file=sys.stderr)
+            sys.exit(2)
+        if self.port_hint:                                  # MIDI-pad taps (optional)
+            try:
+                import rtmidi  # noqa: F401
+                self._open_midi()
+            except ImportError:
+                pass
+        if self.udp_port:                                   # deck-key taps
+            self._start_udp()
+        if not self._midiin and not self._udp:
+            print("! tap→link needs a MIDI port (--port) or UDP (--tap-udp-port > 0).", file=sys.stderr)
+            sys.exit(2)
+
+        async def loop():
+            link = Link(self.bpm); link.enabled = True
+            try:
+                link.quantum = float(self.beats_per_bar)
+            except Exception:
+                pass
+            print(f"→ Tap → Ableton Link: tap to set the session tempo — Ableton + every Link "
+                  f"app + the lamps follow. Joined at {self.bpm:.0f} bpm.")
+            step = 1.0 / self.sub
+            getphase = (lambda: link.phase()) if callable(getattr(link, "phase", None)) else (lambda: link.phase)
+            await link.sync(step)
+            i = int(round(float(getphase()) / step))        # seed from Link's shared bar phase
+            while not self._stop.is_set():
+                if self._reset.is_set():                    # a tap fell → push its BPM to the session
+                    self._reset.clear()
+                    with self._lock:
+                        bpm = self.bpm
+                    try:
+                        link.tempo = float(bpm)             # propagates to Ableton + all Link peers
+                    except Exception as e:
+                        print("  ! set link tempo:", e, file=sys.stderr)
+                tempo = float(link.tempo)
+                sub_dur = (60.0 / max(1e-6, tempo)) * step
+                anticip_s = min(sub_dur * 0.9, self.anticip() / 1000.0)
+                i += 1
+                await asyncio.sleep(max(0.0, sub_dur - anticip_s))
+                beat = (i // self.sub) % self.beats_per_bar
+                is_down = (i % (self.sub * self.beats_per_bar) == 0)
+                try:
+                    self.on_tick(beat + 1, is_down, tempo)
+                except Exception as e:
+                    print("  ! tick handler error:", e, file=sys.stderr)
+                await link.sync(step)
+
+        try:
+            import asyncio
+            asyncio.run(loop())
+        except KeyboardInterrupt:
+            pass
+
+
 # --------------------------------------------------------------------------- #
 #  CLI                                                                         #
 # --------------------------------------------------------------------------- #
@@ -605,7 +679,7 @@ def build_parser():
     p.add_argument("--tap-udp-port", type=int, default=8378,
                    help="for --source tap: also accept taps as UDP datagrams on this local "
                         "port (a Stream Deck key can tap here); 0 disables. Default 8378.")
-    p.add_argument("--source", choices=["midi", "link", "tap"], default="midi",
+    p.add_argument("--source", choices=["midi", "link", "tap", "taplink"], default="midi",
                    help="clock source (default: midi)")
     p.add_argument("--port", default="",
                    help="MIDI input port name substring (midi source). "
@@ -680,10 +754,11 @@ def main(argv=None):
 
     if args.source == "midi":
         src = MidiClockSource(args.port, args.sub, args.beats_per_bar, bus.tick, bus.anticip_ms)
-    elif args.source == "tap":
-        src = TapTempoSource(args.port, args.sub, args.beats_per_bar, bus.tick,
-                             tap_note=args.tap_note, anticip=bus.anticip_ms,
-                             init_bpm=args.bpm, udp_port=max(0, args.tap_udp_port))
+    elif args.source in ("tap", "taplink"):
+        cls = TapLinkSource if args.source == "taplink" else TapTempoSource
+        src = cls(args.port, args.sub, args.beats_per_bar, bus.tick,
+                  tap_note=args.tap_note, anticip=bus.anticip_ms,
+                  init_bpm=args.bpm, udp_port=max(0, args.tap_udp_port))
     else:
         src = LinkClockSource(args.bpm, args.sub, args.beats_per_bar, bus.tick, bus.anticip_ms)
 

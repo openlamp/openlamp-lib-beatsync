@@ -76,6 +76,11 @@ colour-cycles the lamps **on the beat** from one of three tempo sources —
   to the music and beatsync derives the tempo from your taps, then free-runs the lamps
   on it. No DAW or clock needed (acoustic set, jam). Each tap re-seeds the downbeat, so
   the accent tracks your taps; re-tap any time to change tempo (BPM clamped 30–300).
+  Taps also arrive as **UDP** datagrams (`--tap-udp-port`, default 8378) so a **Stream
+  Deck key** can be the tap pad with no MIDI wiring at all.
+- **`--source taplink`** — **tap to set the Ableton Link tempo**: your taps become the
+  master tempo for the whole **Link session** — Ableton Live and every Link app adopt it,
+  and the lamps follow. Tap the deck → the DAW's BPM changes. Same tap inputs as `tap`.
 
 Same target as `lumideck_midi.py`: it POSTs to the engine's local API on
 `127.0.0.1:8377`, respecting the ~4 commands/second the WLED firmware can ack (it drops
