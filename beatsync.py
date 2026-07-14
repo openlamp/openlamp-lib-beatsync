@@ -14,13 +14,17 @@ connections). It stays a standalone helper on purpose: MIDI (python-rtmidi) and
 Ableton Link (aalink) are native C/C++ extensions, deliberately kept out of the
 pure-Python, zero-toolchain LumiDeck plugin binary.
 
-Two clock sources, same lamp mapping
-------------------------------------
+Three clock sources, same lamp mapping
+--------------------------------------
   --source midi   follow an external MIDI clock (24 ppqn: Start/Stop/Continue,
                   Song-Position). Any DAW, drum machine, or Bome routing that
                   sends MIDI clock works — including Ableton via a virtual port.
   --source link   join an Ableton Link session (phone-locked tempo + phase,
                   no cable). Requires `pip install aalink`.
+  --source tap    BE the clock: tap a MIDI note (pad / footswitch / key) along to
+                  the music and beatsync derives the tempo from your taps, then
+                  free-runs the lamps on it. No DAW/clock needed (acoustic, jam).
+                  Each tap re-seeds the downbeat. Optional --tap-note to pick the note.
 
 The hardware cap that shapes everything
 ---------------------------------------
@@ -64,6 +68,7 @@ Usage
   python3 sync/beatsync.py --source midi --port Bome --sub 2 --action cycle \
         --colors rouge,bleu,vert --accent --lamps front
   python3 sync/beatsync.py --source link --bpm 120 --action pulse
+  python3 sync/beatsync.py --source tap --port "IAC" --tap-note 60 --accent
 
 Ctrl-C to stop (lamps are restored to their pre-sync state on exit).
 """
@@ -455,6 +460,113 @@ class LinkClockSource:
         self._stop = True
 
 
+class TapTempoSource:
+    """Tap a MIDI note to SET the tempo — no external clock needed.
+
+    Unlike the MIDI-clock and Link sources (which FOLLOW an external tempo), here YOU
+    are the clock: tap a pad / footswitch / key along to the music and beatsync derives
+    the BPM from your tap intervals, then free-runs the lamps at that tempo. Each tap
+    re-seeds the downbeat, so the accent always tracks your taps. Ideal when there's no
+    DAW clock to follow (acoustic set, jam). Nothing flashes until the first two taps
+    give a tempo. A gap > 2 s between taps starts a fresh estimate (you can re-tap a new
+    tempo any time). BPM clamped to 30–300.
+    """
+    def __init__(self, port_hint, sub, beats_per_bar, on_tick, tap_note=None,
+                 anticip=None, init_bpm=120.0):
+        self.port_hint = port_hint
+        self.sub = max(1, sub)
+        self.beats_per_bar = beats_per_bar
+        self.on_tick = on_tick
+        self.tap_note = tap_note                    # None = ANY note-on counts as a tap
+        self.anticip = anticip or (lambda: 0.0)
+        self.bpm = init_bpm
+        self._taps = collections.deque(maxlen=5)    # recent tap times → rolling BPM
+        self._armed = False                         # flash only once we have a tempo
+        self._reset = threading.Event()             # a tap fell → re-seed the downbeat
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._midiin = None
+
+    def _open(self):
+        import rtmidi
+        m = rtmidi.MidiIn(); ports = m.get_ports()
+        if not ports:
+            raise RuntimeError("no MIDI input ports found. Open a virtual port "
+                               "(Audio MIDI Setup → IAC Driver) or route via Bome.")
+        idx = 0
+        if self.port_hint:
+            matches = [i for i, p in enumerate(ports) if self.port_hint.lower() in p.lower()]
+            if not matches:
+                raise RuntimeError(f"no MIDI port matches '{self.port_hint}'. Available: {ports}")
+            idx = matches[0]
+        m.open_port(idx)
+        m.set_callback(self._on_midi)
+        self._midiin = m
+        tgt = "any note" if self.tap_note is None else f"note {self.tap_note}"
+        print(f"→ Tap tempo: listening on '{ports[idx]}' — tap {tgt} to set the tempo "
+              f"(sub={self.sub}/quarter). Tap along; the lamps lock to your taps.")
+
+    def _on_midi(self, event, _data=None):
+        msg, _dt = event
+        if not msg or len(msg) < 3:
+            return
+        if (msg[0] & 0xF0) == 0x90 and msg[2] > 0:          # note-on, velocity > 0
+            if self.tap_note is None or msg[1] == self.tap_note:
+                self._tap()
+
+    def _tap(self):
+        now = time.monotonic()
+        with self._lock:
+            self._taps.append(now)
+            ivs = [b - a for a, b in zip(self._taps, list(self._taps)[1:]) if 0 < b - a < 2.0]
+            if ivs:
+                self.bpm = max(30.0, min(300.0, 60.0 / (sum(ivs) / len(ivs))))
+                self._armed = True
+        self._reset.set()                                    # this tap IS the downbeat
+
+    def run(self):
+        try:
+            import rtmidi  # noqa: F401
+        except ImportError:
+            print("! Tap tempo needs python-rtmidi:\n    pip install python-rtmidi", file=sys.stderr)
+            sys.exit(2)
+        self._open()
+        i, next_beat = 0, time.monotonic()
+        while not self._stop.is_set():
+            if self._reset.is_set():
+                self._reset.clear()
+                with self._lock:
+                    bpm, armed = self.bpm, self._armed
+                if armed:
+                    self._fire(0, bpm)                       # the tap = beat 1, flash it now
+                    i, next_beat = 1, time.monotonic() + (60.0 / bpm) / self.sub
+                continue
+            with self._lock:
+                bpm, armed = self.bpm, self._armed
+            if not armed:
+                time.sleep(0.02); continue                   # waiting for the first taps
+            sub_dur = (60.0 / bpm) / self.sub
+            anticip_s = min(sub_dur * 0.9, self.anticip() / 1000.0)
+            wait = (next_beat - anticip_s) - time.monotonic()
+            if wait > 0.04:
+                time.sleep(0.04); continue                   # short naps → stay responsive to taps
+            if wait > 0:
+                time.sleep(wait)
+            self._fire(i, bpm)
+            i += 1; next_beat += sub_dur
+
+    def _fire(self, i, bpm):
+        beat = (i // self.sub) % self.beats_per_bar
+        is_down = (i % (self.sub * self.beats_per_bar) == 0)
+        try:
+            self.on_tick(beat + 1, is_down, bpm)
+        except Exception as e:
+            print("  ! tick handler error:", e, file=sys.stderr)
+
+    def stop(self):
+        self._stop.set()
+
+
 # --------------------------------------------------------------------------- #
 #  CLI                                                                         #
 # --------------------------------------------------------------------------- #
@@ -462,7 +574,10 @@ def build_parser():
     p = argparse.ArgumentParser(
         prog="beatsync",
         description="Drive OpenLamp/WLED lamps in time with MIDI clock or Ableton Link.")
-    p.add_argument("--source", choices=["midi", "link"], default="midi",
+    p.add_argument("--tap-note", type=int, default=None,
+                   help="for --source tap: only this MIDI note number (0-127) counts as "
+                        "a tap; default = any note-on (any pad/key).")
+    p.add_argument("--source", choices=["midi", "link", "tap"], default="midi",
                    help="clock source (default: midi)")
     p.add_argument("--port", default="",
                    help="MIDI input port name substring (midi source). "
@@ -537,6 +652,9 @@ def main(argv=None):
 
     if args.source == "midi":
         src = MidiClockSource(args.port, args.sub, args.beats_per_bar, bus.tick, bus.anticip_ms)
+    elif args.source == "tap":
+        src = TapTempoSource(args.port, args.sub, args.beats_per_bar, bus.tick,
+                             tap_note=args.tap_note, anticip=bus.anticip_ms, init_bpm=args.bpm)
     else:
         src = LinkClockSource(args.bpm, args.sub, args.beats_per_bar, bus.tick, bus.anticip_ms)
 
