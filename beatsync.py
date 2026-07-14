@@ -472,7 +472,7 @@ class TapTempoSource:
     tempo any time). BPM clamped to 30–300.
     """
     def __init__(self, port_hint, sub, beats_per_bar, on_tick, tap_note=None,
-                 anticip=None, init_bpm=120.0):
+                 anticip=None, init_bpm=120.0, udp_port=8378):
         self.port_hint = port_hint
         self.sub = max(1, sub)
         self.beats_per_bar = beats_per_bar
@@ -480,31 +480,45 @@ class TapTempoSource:
         self.tap_note = tap_note                    # None = ANY note-on counts as a tap
         self.anticip = anticip or (lambda: 0.0)
         self.bpm = init_bpm
+        self.udp_port = udp_port                     # 0 disables; else a datagram = a tap
         self._taps = collections.deque(maxlen=5)    # recent tap times → rolling BPM
         self._armed = False                         # flash only once we have a tempo
         self._reset = threading.Event()             # a tap fell → re-seed the downbeat
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._midiin = None
+        self._udp = None
 
-    def _open(self):
+    def _open_midi(self):
         import rtmidi
         m = rtmidi.MidiIn(); ports = m.get_ports()
         if not ports:
             raise RuntimeError("no MIDI input ports found. Open a virtual port "
                                "(Audio MIDI Setup → IAC Driver) or route via Bome.")
-        idx = 0
-        if self.port_hint:
-            matches = [i for i, p in enumerate(ports) if self.port_hint.lower() in p.lower()]
-            if not matches:
-                raise RuntimeError(f"no MIDI port matches '{self.port_hint}'. Available: {ports}")
-            idx = matches[0]
-        m.open_port(idx)
-        m.set_callback(self._on_midi)
-        self._midiin = m
+        matches = [i for i, p in enumerate(ports) if self.port_hint.lower() in p.lower()]
+        if not matches:
+            raise RuntimeError(f"no MIDI port matches '{self.port_hint}'. Available: {ports}")
+        m.open_port(matches[0]); m.set_callback(self._on_midi); self._midiin = m
         tgt = "any note" if self.tap_note is None else f"note {self.tap_note}"
-        print(f"→ Tap tempo: listening on '{ports[idx]}' — tap {tgt} to set the tempo "
-              f"(sub={self.sub}/quarter). Tap along; the lamps lock to your taps.")
+        print(f"→ Tap tempo: tap {tgt} on '{ports[matches[0]]}' to set the tempo.")
+
+    def _start_udp(self):
+        # A local UDP socket so ANY tool (e.g. the Stream Deck plugin, on each key press)
+        # can send a tap without emitting MIDI — the payload is ignored, arrival = a tap.
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", self.udp_port)); s.settimeout(0.3)
+        self._udp = s
+        def _loop():
+            while not self._stop.is_set():
+                try: s.recvfrom(16)
+                except socket.timeout: continue
+                except OSError: break
+                self._tap()
+        threading.Thread(target=_loop, daemon=True).start()
+        print(f"→ Tap tempo: also listening for taps on udp 127.0.0.1:{self.udp_port} "
+              f"(the deck key can tap here).")
 
     def _on_midi(self, event, _data=None):
         msg, _dt = event
@@ -525,12 +539,20 @@ class TapTempoSource:
         self._reset.set()                                    # this tap IS the downbeat
 
     def run(self):
-        try:
-            import rtmidi  # noqa: F401
-        except ImportError:
-            print("! Tap tempo needs python-rtmidi:\n    pip install python-rtmidi", file=sys.stderr)
+        if self.port_hint:                          # MIDI-pad taps (optional)
+            try:
+                import rtmidi  # noqa: F401
+            except ImportError:
+                print("! MIDI tap needs python-rtmidi:\n    pip install python-rtmidi", file=sys.stderr)
+                sys.exit(2)
+            self._open_midi()
+        if self.udp_port:                           # programmatic taps (the deck key)
+            self._start_udp()
+        if not self._midiin and not self._udp:
+            print("! tap source needs a MIDI port (--port) or UDP (--tap-udp-port > 0).",
+                  file=sys.stderr)
             sys.exit(2)
-        self._open()
+        print(f"  waiting for taps… (sub={self.sub}/quarter; nothing flashes until 2 taps set a tempo)")
         i, next_beat = 0, time.monotonic()
         while not self._stop.is_set():
             if self._reset.is_set():
@@ -565,6 +587,9 @@ class TapTempoSource:
 
     def stop(self):
         self._stop.set()
+        if self._udp:
+            try: self._udp.close()
+            except Exception: pass
 
 
 # --------------------------------------------------------------------------- #
@@ -577,6 +602,9 @@ def build_parser():
     p.add_argument("--tap-note", type=int, default=None,
                    help="for --source tap: only this MIDI note number (0-127) counts as "
                         "a tap; default = any note-on (any pad/key).")
+    p.add_argument("--tap-udp-port", type=int, default=8378,
+                   help="for --source tap: also accept taps as UDP datagrams on this local "
+                        "port (a Stream Deck key can tap here); 0 disables. Default 8378.")
     p.add_argument("--source", choices=["midi", "link", "tap"], default="midi",
                    help="clock source (default: midi)")
     p.add_argument("--port", default="",
@@ -654,7 +682,8 @@ def main(argv=None):
         src = MidiClockSource(args.port, args.sub, args.beats_per_bar, bus.tick, bus.anticip_ms)
     elif args.source == "tap":
         src = TapTempoSource(args.port, args.sub, args.beats_per_bar, bus.tick,
-                             tap_note=args.tap_note, anticip=bus.anticip_ms, init_bpm=args.bpm)
+                             tap_note=args.tap_note, anticip=bus.anticip_ms,
+                             init_bpm=args.bpm, udp_port=max(0, args.tap_udp_port))
     else:
         src = LinkClockSource(args.bpm, args.sub, args.beats_per_bar, bus.tick, bus.anticip_ms)
 
