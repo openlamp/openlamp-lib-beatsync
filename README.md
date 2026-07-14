@@ -39,4 +39,4 @@ Uses the engine's local API (`127.0.0.1:8377`). Requires the engine running.
 
 ## License
 
-[EUPL-1.2](LICENSE).
+[MIT](LICENSE).
