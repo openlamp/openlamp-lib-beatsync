@@ -82,6 +82,13 @@ colour-cycles the lamps **on the beat** from one of three tempo sources —
   master tempo for the whole **Link session** — Ableton Live and every Link app adopt it,
   and the lamps follow. Tap the deck → the DAW's BPM changes. Same tap inputs as `tap`.
 
+**`--midi-clock-out [PORT]`** (any source) — ALSO emit standard **MIDI clock** (24 ppqn +
+Start/Stop) at beatsync's current tempo, so external hardware set to *external sync* follows
+the deck. Give a MIDI-out port name, or pass it bare to create a virtual `beatsync clock`
+port. Pairs beautifully with `tap`/`taplink`: **tap the deck → your synths & drum machines
+change tempo too.** (MIDI clock is master→slave, so this is how a MIDI rig follows you —
+you can't rewrite an incoming clock, but you can *be* the clock.)
+
 Same target as `lumideck_midi.py`: it POSTs to the engine's local API on
 `127.0.0.1:8377`, respecting the ~4 commands/second the WLED firmware can ack (it drops
 excess ticks rather than choke the lamps).

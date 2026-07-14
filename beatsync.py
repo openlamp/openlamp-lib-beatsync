@@ -74,6 +74,7 @@ Usage
         --colors rouge,bleu,vert --accent --lamps front
   python3 sync/beatsync.py --source link --bpm 120 --action pulse
   python3 sync/beatsync.py --source tap --port "IAC" --tap-note 60 --accent
+  python3 sync/beatsync.py --source taplink --midi-clock-out --accent   # tap → Link + MIDI clock out
 
 Ctrl-C to stop (lamps are restored to their pre-sync state on exit).
 """
@@ -336,6 +337,9 @@ class MidiClockSource:
         per_clock = span / (len(self._times) - 1)
         return 60.0 / (per_clock * 24)
 
+    def current_bpm(self):
+        return self._bpm()
+
     def _on_midi(self, event, _data=None):
         msg, _dt = event
         if not msg:
@@ -410,6 +414,10 @@ class LinkClockSource:
         self.on_tick = on_tick
         self.anticip = anticip or (lambda: 0.0)   # ms to fire before the beat
         self._stop = False
+        self._cur_bpm = bpm                       # updated from Link each tick (for MIDI-clock-out)
+
+    def current_bpm(self):
+        return self._cur_bpm
 
     def run(self):
         try:
@@ -442,7 +450,7 @@ class LinkClockSource:
             # the accent lands on the real "1", not an arbitrary start beat (Benoit 2026-07-13).
             i = int(round(float(getphase()) / step))
             while not self._stop:
-                tempo = float(link.tempo)
+                tempo = float(link.tempo); self._cur_bpm = tempo
                 sub_dur = (60.0 / max(1e-6, tempo)) * step
                 anticip_s = min(sub_dur * 0.9, self.anticip() / 1000.0)
                 i += 1                                  # the boundary we fire for
@@ -590,6 +598,9 @@ class TapTempoSource:
         except Exception as e:
             print("  ! tick handler error:", e, file=sys.stderr)
 
+    def current_bpm(self):
+        return self.bpm
+
     def stop(self):
         self._stop.set()
         if self._udp:
@@ -666,6 +677,63 @@ class TapLinkSource(TapTempoSource):
             pass
 
 
+class MidiClockOut:
+    """Emit standard MIDI clock (24 pulses per quarter) + Start/Stop on a MIDI OUT port,
+    so external hardware set to 'external sync' follows beatsync's tempo — the deck becomes
+    the master clock. The emitted tempo tracks whatever source drives beatsync (a tap, the
+    Link session, …) via a bpm getter, so a tap tempo can drive your synths/drum machines
+    too. Runs in its own thread alongside the lamp loop. If the port name isn't found (or is
+    empty) a VIRTUAL 'beatsync clock' port is created for a DAW/gear to subscribe to.
+    """
+    def __init__(self, port_hint, get_bpm):
+        self.port_hint = port_hint
+        self.get_bpm = get_bpm
+        self._stop = threading.Event()
+        self._out = None
+
+    def _open(self):
+        import rtmidi
+        m = rtmidi.MidiOut(); ports = m.get_ports()
+        idx = None
+        if self.port_hint:
+            idx = next((i for i, p in enumerate(ports) if self.port_hint.lower() in p.lower()), None)
+        if idx is not None:
+            m.open_port(idx); name = ports[idx]
+        else:
+            m.open_virtual_port("beatsync clock"); name = "beatsync clock (virtual)"
+        self._out = m
+        print(f"→ MIDI clock OUT on '{name}' (24 ppqn + Start/Stop) — set your gear to external sync.")
+
+    def run(self):
+        try:
+            import rtmidi  # noqa: F401
+        except ImportError:
+            print("! MIDI clock out needs python-rtmidi:\n    pip install python-rtmidi", file=sys.stderr)
+            return
+        self._open()
+        try: self._out.send_message([0xFA])                 # Start
+        except Exception: pass
+        nxt = time.monotonic()
+        while not self._stop.is_set():
+            bpm = max(20.0, min(400.0, self.get_bpm() or 120.0))
+            nxt += 60.0 / (bpm * 24.0)                       # 24 clocks / quarter
+            dt = nxt - time.monotonic()
+            if dt > 0:
+                time.sleep(min(dt, 0.05))
+                if time.monotonic() < nxt - 0.001:
+                    continue                                 # not due yet (short nap for bpm changes)
+            elif dt < -0.1:
+                nxt = time.monotonic()                       # fell behind → resync
+            try: self._out.send_message([0xF8])              # clock pulse
+            except Exception: break
+
+    def stop(self):
+        self._stop.set()
+        if self._out:
+            try: self._out.send_message([0xFC])              # Stop
+            except Exception: pass
+
+
 # --------------------------------------------------------------------------- #
 #  CLI                                                                         #
 # --------------------------------------------------------------------------- #
@@ -679,6 +747,11 @@ def build_parser():
     p.add_argument("--tap-udp-port", type=int, default=8378,
                    help="for --source tap: also accept taps as UDP datagrams on this local "
                         "port (a Stream Deck key can tap here); 0 disables. Default 8378.")
+    p.add_argument("--midi-clock-out", nargs="?", const="", default=None, metavar="PORT",
+                   help="ALSO emit MIDI clock (24 ppqn + Start/Stop) at beatsync's current "
+                        "tempo, so external gear in 'external sync' follows the deck. Give a "
+                        "MIDI out port name substring, or pass it bare to create a virtual "
+                        "'beatsync clock' port. Works with any source (great with tap/taplink).")
     p.add_argument("--source", choices=["midi", "link", "tap", "taplink"], default="midi",
                    help="clock source (default: midi)")
     p.add_argument("--port", default="",
@@ -762,14 +835,21 @@ def main(argv=None):
     else:
         src = LinkClockSource(args.bpm, args.sub, args.beats_per_bar, bus.tick, bus.anticip_ms)
 
+    clockout = None
+    if args.midi_clock_out is not None:                     # emit MIDI clock at the source's tempo
+        clockout = MidiClockOut(args.midi_clock_out, src.current_bpm)
+        threading.Thread(target=clockout.run, daemon=True).start()
+
     def _sigint(*_):
         print("\n↓ stopping…")
+        if clockout: clockout.stop()
         src.stop()
     signal.signal(signal.SIGINT, _sigint)
 
     try:
         src.run()
     finally:
+        if clockout: clockout.stop()
         bus.restore()
     return 0
 
