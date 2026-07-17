@@ -89,3 +89,7 @@ Optional dependency: the `[link]` extra installs
 [Ableton Link](https://github.com/Ableton/link)), which is **GPLv2**. When you install
 that extra, the running combination is governed by the GPL as described above. The MIT
 license covers this repository's code; it does not relicense aalink or Link.
+
+---
+
+**Two open standards, one bridge.** This implements the open [**wled-midi**](https://github.com/openlamp/wled-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/wled-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/wled-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).
