@@ -60,8 +60,9 @@ a local HTTP API. This keeps the GPL reach of Link/aalink confined to a single p
 
 **What that means for licensing**
 
-Ableton Link (and therefore aalink) is **GPLv2** — a component that loads it *in the
-same process* forms a combined program governed by the GPL. In OpenLamp:
+**Ableton Link is GPLv2-or-later**, and **aalink** (its Python binding, installed by the
+`[link]` extra) is **GPLv3** — a component that loads them *in the same process* forms a
+combined program governed by the GPL (GPLv3). In OpenLamp:
 
 - The **only** process that ever combines with aalink is `beatsync.py` (this package).
   It is [MIT](LICENSE); since MIT is one-way compatible with the GPL, combining it with
@@ -76,19 +77,29 @@ same process* forms a combined program governed by the GPL. In OpenLamp:
 > other OpenLamp component is a separate program reached only over local HTTP, so the
 > GPL obligation never reaches the engine or the frontends.
 
-Installing the `[link]` extra pulls in **aalink (GPLv2)**; the resulting combined
-program (this helper + aalink + Link) is therefore governed by the **GPL**. Without the
-extra, `openlamp-midi` is a pure-Python MIT package that does not touch Link at all.
+Installing the `[link]` extra pulls in **aalink (GPLv3)**, which incorporates **Ableton
+Link (GPLv2-or-later)**; the resulting combined program (this helper + aalink + Link) is
+therefore governed by **GPLv3**. Without the extra, `openlamp-midi` is a pure-Python MIT
+package that does not touch Link at all.
+
+> **Commercial / proprietary bundling:** if you distribute `beatsync.py` **commercially** —
+> e.g. bundled inside a closed, proprietary application — a **commercial Ableton Link license**
+> is required (Link is dual-licensed GPL / commercial). Open-source and personal use are covered
+> by the GPL path above.
+>
+> *This boundary was reviewed with the Ableton Link team (July 2026), who confirmed the separation
+> is sound and recommended these notices.*
 
 ## License
 
 [MIT](LICENSE) — for this package's own source (`beatsync.py`).
 
 Optional dependency: the `[link]` extra installs
-[aalink](https://pypi.org/project/aalink/) (a Python binding to
-[Ableton Link](https://github.com/Ableton/link)), which is **GPLv2**. When you install
-that extra, the running combination is governed by the GPL as described above. The MIT
-license covers this repository's code; it does not relicense aalink or Link.
+[aalink](https://pypi.org/project/aalink/) (**GPLv3**, a Python binding to
+[Ableton Link](https://github.com/Ableton/link), which is **GPLv2-or-later**). When you install
+that extra, the running combination is governed by **GPLv3** as described above; **commercial /
+proprietary bundling additionally requires a commercial Ableton Link license**. The MIT license
+covers this repository's own code; it does not relicense aalink or Link.
 
 ---
 
