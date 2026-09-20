@@ -1,9 +1,17 @@
-# openlamp-midi — Ableton Link / tempo for OpenLamp lamps
+<p align="center"><img src="assets/banner.svg" alt="OpenLamp Beat Sync" width="100%"></p>
+
+# OpenLamp Beat Sync — Ableton Link / tempo for OpenLamp lamps
 
 Flash your [OpenLamp](https://github.com/openlamp) lamps **on the beat**, phase-accurate,
 from an **Ableton Link** session or a **MIDI clock**. 100 % local.
 
 [![PyPI — openlamp-midi](https://img.shields.io/pypi/v/openlamp-midi?label=openlamp-midi&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/openlamp-midi/)
+
+> **This package does no MIDI control** — despite the PyPI name, which is kept for
+> continuity. It follows a tempo source (Ableton Link or MIDI clock) and drives the
+> [engine](https://github.com/openlamp/openlamp-engine-python)'s local HTTP API. Notes →
+> colours, CC → brightness and Program Change → presets live in the engine's `midi.py`.
+> See [Scope](#scope).
 
 ```bash
 pip install "openlamp-midi[link]"          # [link] adds Ableton Link (native build)
@@ -19,7 +27,7 @@ the bar's phase). See `--help` for `--source link | taplink | clock | tap`.
 
 This package is **only** the tempo/beat layer. The **MIDI control** path — notes →
 colours, CC → brightness/effects, Program Change → presets — moved into the engine
-and now lives in [`openlamp/engine → midi.py`](https://github.com/openlamp/openlamp-engine-python/blob/main/midi.py),
+and now lives in [`openlamp-engine-python → midi.py`](https://github.com/openlamp/openlamp-engine-python/blob/main/midi.py),
 the reference implementation of the
 **[wled-midi](https://github.com/openlamp/openlamp-spec-midi)** convention. (Before v0.2.0 this
 package also shipped a separate MIDI bridge; it was removed — use the engine's
@@ -29,9 +37,9 @@ package also shipped a separate MIDI bridge; it was removed — use the engine's
 
 | Layer | Repo | Role |
 |---|---|---|
-| convention | [wled-midi](https://github.com/openlamp/openlamp-spec-midi) | the MIDI↔WLED spec |
-| engine | [engine](https://github.com/openlamp/openlamp-engine-python) | drives the lamps + implements the convention (`midi.py`) |
-| Ableton | [live](https://github.com/openlamp/openlamp-pack-ableton) | Ableton Live frontend |
+| spec | [openlamp-spec-midi](https://github.com/openlamp/openlamp-spec-midi) | the MIDI↔WLED spec |
+| engine | [openlamp-engine-python](https://github.com/openlamp/openlamp-engine-python) | drives the lamps + implements the spec (`midi.py`) |
+| Ableton | [openlamp-pack-ableton](https://github.com/openlamp/openlamp-pack-ableton) | Ableton Live frontend |
 | **tempo** | **this repo** | Ableton Link / MIDI-clock beat pulse |
 
 Uses the engine's local API (`127.0.0.1:8377`). Requires the engine running.
