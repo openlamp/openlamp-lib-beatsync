@@ -29,7 +29,7 @@ This package is **only** the tempo/beat layer. The **MIDI control** path — not
 colours, CC → brightness/effects, Program Change → presets — moved into the engine
 and now lives in [`openlamp-engine-python → midi.py`](https://github.com/openlamp/openlamp-engine-python/blob/main/midi.py),
 the reference implementation of the
-**[wled-midi](https://github.com/openlamp/openlamp-spec-midi)** convention. (Before v0.2.0 this
+**[OpenLamp MIDI](https://github.com/openlamp/openlamp-spec-midi)** convention. (Before v0.2.0 this
 package also shipped a separate MIDI bridge; it was removed — use the engine's
 `midi.py`.)
 
@@ -111,4 +111,4 @@ covers this repository's own code; it does not relicense aalink or Link.
 
 ---
 
-**Two open standards, one bridge.** This implements the open [**wled-midi**](https://github.com/openlamp/openlamp-spec-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/openlamp-spec-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/openlamp-spec-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).
+**Two open standards, one bridge.** This implements the open [**OpenLamp MIDI**](https://github.com/openlamp/openlamp-spec-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/openlamp-spec-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/openlamp-spec-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).
