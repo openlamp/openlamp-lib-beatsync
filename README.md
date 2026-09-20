@@ -19,9 +19,9 @@ the bar's phase). See `--help` for `--source link | taplink | clock | tap`.
 
 This package is **only** the tempo/beat layer. The **MIDI control** path — notes →
 colours, CC → brightness/effects, Program Change → presets — moved into the engine
-and now lives in [`openlamp/engine → midi.py`](https://github.com/openlamp/engine/blob/main/midi.py),
+and now lives in [`openlamp/engine → midi.py`](https://github.com/openlamp/openlamp-engine-python/blob/main/midi.py),
 the reference implementation of the
-**[wled-midi](https://github.com/openlamp/wled-midi)** convention. (Before v0.2.0 this
+**[wled-midi](https://github.com/openlamp/openlamp-spec-midi)** convention. (Before v0.2.0 this
 package also shipped a separate MIDI bridge; it was removed — use the engine's
 `midi.py`.)
 
@@ -29,9 +29,9 @@ package also shipped a separate MIDI bridge; it was removed — use the engine's
 
 | Layer | Repo | Role |
 |---|---|---|
-| convention | [wled-midi](https://github.com/openlamp/wled-midi) | the MIDI↔WLED spec |
-| engine | [engine](https://github.com/openlamp/engine) | drives the lamps + implements the convention (`midi.py`) |
-| Ableton | [live](https://github.com/openlamp/live) | Ableton Live frontend |
+| convention | [wled-midi](https://github.com/openlamp/openlamp-spec-midi) | the MIDI↔WLED spec |
+| engine | [engine](https://github.com/openlamp/openlamp-engine-python) | drives the lamps + implements the convention (`midi.py`) |
+| Ableton | [live](https://github.com/openlamp/openlamp-pack-ableton) | Ableton Live frontend |
 | **tempo** | **this repo** | Ableton Link / MIDI-clock beat pulse |
 
 Uses the engine's local API (`127.0.0.1:8377`). Requires the engine running.
@@ -55,7 +55,7 @@ a local HTTP API. This keeps the GPL reach of Link/aalink confined to a single p
   [aalink](https://pypi.org/project/aalink/) and is imported *only here*** — a
   lazy, local `from aalink import Link` inside the Link source, gated behind the
   optional extra: `pip install "openlamp-midi[link]"`. The
-  [engine](https://github.com/openlamp/engine) and the frontends contain **zero**
+  [engine](https://github.com/openlamp/openlamp-engine-python) and the frontends contain **zero**
   Link/aalink references.
 
 **What that means for licensing**
@@ -103,4 +103,4 @@ covers this repository's own code; it does not relicense aalink or Link.
 
 ---
 
-**Two open standards, one bridge.** This implements the open [**wled-midi**](https://github.com/openlamp/wled-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/wled-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/wled-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).
+**Two open standards, one bridge.** This implements the open [**wled-midi**](https://github.com/openlamp/openlamp-spec-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/openlamp-spec-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/openlamp-spec-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).
