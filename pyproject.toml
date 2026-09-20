@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "openlamp-midi"
 version = "0.2.0"
-description = "Ableton Link / tempo-follow for OpenLamp smart lamps — flash them on the beat, phase-accurate. (MIDI *control* moved into the engine: github.com/openlamp/engine)."
+description = "Ableton Link / tempo-follow for OpenLamp smart lamps — flash them on the beat, phase-accurate. (MIDI *control* moved into the engine: github.com/openlamp/openlamp-engine-python)."
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Benoît Besson (@Beennnn)", email = "benoit.besson@gmail.com" }]
@@ -27,9 +27,9 @@ dependencies = ["python-rtmidi>=1.5"]
 link = ["aalink>=0.1"]
 
 [project.urls]
-Homepage = "https://github.com/openlamp/midi"
-Source = "https://github.com/openlamp/midi"
-Issues = "https://github.com/openlamp/midi/issues"
+Homepage = "https://github.com/openlamp/openlamp-lib-beatsync"
+Source = "https://github.com/openlamp/openlamp-lib-beatsync"
+Issues = "https://github.com/openlamp/openlamp-lib-beatsync/issues"
 "OpenLamp umbrella" = "https://github.com/openlamp"
 
 [project.scripts]
