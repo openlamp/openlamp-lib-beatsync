@@ -5,7 +5,7 @@ beatsync — drive OpenLamp/WLED lamps in time with an external musical clock.
 Where this sits in the OpenLamp stack
 -------------------------------------
 This is the tempo/beat frontend of the OpenLamp stack. The MIDI *control* path
-(notes/CC -> lamp commands) lives in the engine's midi.py (the wled-midi reference
+(notes/CC -> lamp commands) lives in the engine's midi.py (the OpenLamp MIDI reference
 implementation); beatsync focuses on *tempo*: it follows an external MIDI clock or an
 Ableton Link session and drives the lamps on the beat. Like every OpenLamp frontend it
 never talks to a device directly — it POSTs OpenLamp State commands to the engine's
